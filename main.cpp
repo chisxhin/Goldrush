@@ -1,118 +1,135 @@
 #include <ncurses.h>
+#include <chrono>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 #include <string>
 #include <vector>
-#include <cstdlib>
-#include <ctime>
-#include <chrono>
-#include <cstring>
 
 static const int MIN_W = 80;
-static const int MIN_H = 24;
+static const int MIN_H = 36;
 
-static const int TITLE_W = 76;
-static const int TITLE_H = 3;
-static const int BOARD_W = 76;
-static const int BOARD_H = 14;
-static const int INFO_W = 76;
-static const int INFO_H = 4;
-static const int MSG_W = 76;
+static const int TITLE_W = 80;
+static const int TITLE_H = 8;
+static const int BOARD_W = 80;
+static const int BOARD_H = 28;
+static const int INFO_W = 80;
+static const int INFO_H = 3;
+static const int MSG_W = 80;
 static const int MSG_H = 3;
+
+static const int TILE_COUNT = 89;
+
+enum TileKind {
+    TILE_EMPTY,
+    TILE_BLACK,
+    TILE_START,
+    TILE_SPLIT_START,
+    TILE_COLLEGE,
+    TILE_CAREER,
+    TILE_GRADUATION,
+    TILE_MARRIAGE,
+    TILE_SPLIT_FAMILY,
+    TILE_FAMILY,
+    TILE_CAREER_2,
+    TILE_PAYDAY,
+    TILE_BABY,
+    TILE_RETIREMENT,
+    TILE_HOUSE
+};
+
+enum MiniGameKind {
+    MINIGAME_RED_BLACK,
+    MINIGAME_MATH,
+    MINIGAME_ODD_EVEN
+};
+
+struct Tile {
+    int id;
+    int y;
+    int x;
+    std::string label;
+    TileKind kind;
+    int next;
+    int altNext;
+    int value;
+};
 
 struct Player {
     std::string name;
-    int node = 0;
-    int cash = 10000;
-    std::string job = "Unemployed";
-    int salary = 0;
-    bool married = false;
-    int kids = 0;
-    bool hasHouse = false;
-    int houseValue = 0;
-    bool retired = false;
-    int choiceStart = -1; // 0 = College, 1 = Career
-    int choiceFC = -1;    // 0 = Family, 1 = Career
-    int choiceSR = -1;    // 0 = Safe, 1 = Risk
+    char token;
+    int tile;
+    int cash;
+    std::string job;
+    int salary;
+    bool married;
+    int kids;
+    bool hasHouse;
+    int houseValue;
+    bool retired;
+    int startChoice;
+    int familyChoice;
 };
-
-enum NodeId {
-    START = 0,
-    COLLEGE,
-    CAREER,
-    GRADUATION,
-    WEDDING,
-    BRANCH_FC,
-    FAMILY_PATH,
-    HOUSE,
-    CAREER_PATH,
-    PROMOTION,
-    BRANCH_SR,
-    SAFE_ROAD,
-    RISK_ROAD,
-    RETIREMENT,
-    NODE_COUNT
-};
-
-struct Node {
-    std::string name;
-    int y;
-    int x;
-    int next;
-    int altNext;
-    bool isBranch;
-};
-
-static void drawHLine(WINDOW* w, int y, int x1, int x2) {
-    for (int x = x1; x <= x2; ++x) mvwaddch(w, y, x, ACS_HLINE);
-}
-
-static void drawVLine(WINDOW* w, int x, int y1, int y2) {
-    for (int y = y1; y <= y2; ++y) mvwaddch(w, y, x, ACS_VLINE);
-}
-
-static void waitForEnter(WINDOW* w, int y, int x, const std::string& msg) {
-    mvwprintw(w, y, x, "%s", msg.c_str());
-    wrefresh(w);
-    flushinp();
-    int ch;
-    do {
-        ch = wgetch(w);
-    } while (ch != '\n' && ch != KEY_ENTER);
-}
 
 static void applyWindowBg(WINDOW* w, bool hasColor) {
-    if (!w) return;
-    if (hasColor) {
+    if (w && hasColor) {
         wbkgd(w, COLOR_PAIR(5));
     }
 }
 
 static bool ensureMinSize(bool hasColor) {
     int h, w;
+    timeout(200);
     while (true) {
         getmaxyx(stdscr, h, w);
-        if (h >= MIN_H && w >= MIN_W) return true;
+        if (h >= MIN_H && w >= MIN_W) {
+            timeout(-1);
+            return true;
+        }
 
         if (hasColor) {
             bkgd(COLOR_PAIR(5));
         }
         clear();
-        const char* msg1 = "Terminal too small - please resize";
-        const char* msg2 = "Press Q to quit";
-        int x1 = (w - static_cast<int>(std::strlen(msg1))) / 2;
-        int x2 = (w - static_cast<int>(std::strlen(msg2))) / 2;
+        const char* line1 = "Terminal too small - please resize";
+        const char* line2 = "Minimum size: 80x36";
+        const char* line3 = "Press Q to quit";
+        int x1 = (w - static_cast<int>(std::strlen(line1))) / 2;
+        int x2 = (w - static_cast<int>(std::strlen(line2))) / 2;
+        int x3 = (w - static_cast<int>(std::strlen(line3))) / 2;
         int y = h / 2;
         if (x1 < 0) x1 = 0;
         if (x2 < 0) x2 = 0;
-        mvprintw(y, x1, "%s", msg1);
-        mvprintw(y + 1, x2, "%s", msg2);
+        if (x3 < 0) x3 = 0;
+        mvprintw(y - 1, x1, "%s", line1);
+        mvprintw(y, x2, "%s", line2);
+        mvprintw(y + 1, x3, "%s", line3);
         refresh();
 
-        timeout(200);
         int ch = getch();
-        if (ch == 'q' || ch == 'Q') return false;
-        if (ch == KEY_RESIZE) {
-            clear();
+        if (ch == 'q' || ch == 'Q') {
+            timeout(-1);
+            return false;
         }
+    }
+}
+
+static void destroyWindows(WINDOW*& titleWin, WINDOW*& boardWin, WINDOW*& infoWin, WINDOW*& msgWin) {
+    if (titleWin) {
+        delwin(titleWin);
+        titleWin = nullptr;
+    }
+    if (boardWin) {
+        delwin(boardWin);
+        boardWin = nullptr;
+    }
+    if (infoWin) {
+        delwin(infoWin);
+        infoWin = nullptr;
+    }
+    if (msgWin) {
+        delwin(msgWin);
+        msgWin = nullptr;
     }
 }
 
@@ -134,172 +151,716 @@ static void createWindows(int termH, int termW, WINDOW*& titleWin, WINDOW*& boar
     applyWindowBg(msgWin, hasColor);
 }
 
-static void destroyWindows(WINDOW*& titleWin, WINDOW*& boardWin, WINDOW*& infoWin, WINDOW*& msgWin) {
-    if (titleWin) { delwin(titleWin); titleWin = nullptr; }
-    if (boardWin) { delwin(boardWin); boardWin = nullptr; }
-    if (infoWin) { delwin(infoWin); infoWin = nullptr; }
-    if (msgWin) { delwin(msgWin); msgWin = nullptr; }
+static void waitForEnter(WINDOW* w, int y, int x, const std::string& text) {
+    mvwprintw(w, y, x, "%s", text.c_str());
+    wrefresh(w);
+    int ch;
+    do {
+        ch = wgetch(w);
+    } while (ch != '\n' && ch != KEY_ENTER);
 }
 
-static int spin(WINDOW* w, bool hasColor) {
-    werase(w);
-    box(w, 0, 0);
-    mvwprintw(w, 1, 2, "Hold SPACE to roll");
-    mvwprintw(w, 2, 2, "Release to stop. Then ENTER to confirm");
-    wrefresh(w);
+static int rollSpinner(WINDOW* msgWin, bool hasColor) {
+    werase(msgWin);
+    box(msgWin, 0, 0);
+    mvwprintw(msgWin, 1, 2, "Hold SPACE to roll. Release to stop.");
+    mvwprintw(msgWin, 2, 2, "Result will blink. Press ENTER to confirm.");
+    wrefresh(msgWin);
 
     int ch;
+    do {
+        ch = wgetch(msgWin);
+    } while (ch != ' ');
+
+    nodelay(msgWin, TRUE);
+    auto lastSpace = std::chrono::steady_clock::now();
+    int value = 1;
     while (true) {
-        ch = wgetch(w);
-        if (ch == ' ') break;
-    }
-
-    nodelay(w, TRUE);
-    int result = 1;
-    auto lastInput = std::chrono::steady_clock::now();
-
-    while (true) {
-        result = (std::rand() % 10) + 1;
-        werase(w);
-        box(w, 0, 0);
-        mvwprintw(w, 1, 2, "Rolling: %d", result);
-        wrefresh(w);
-
+        value = (std::rand() % 10) + 1;
+        werase(msgWin);
+        box(msgWin, 0, 0);
+        mvwprintw(msgWin, 1, 2, "Rolling: %d", value);
+        mvwprintw(msgWin, 2, 2, "Release SPACE to stop");
+        wrefresh(msgWin);
         napms(80);
-        ch = wgetch(w);
+
+        ch = wgetch(msgWin);
         if (ch == ' ') {
-            lastInput = std::chrono::steady_clock::now();
+            lastSpace = std::chrono::steady_clock::now();
         }
-        auto now = std::chrono::steady_clock::now();
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastInput).count();
-        if (ms > 300) break;
+        long long elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - lastSpace).count();
+        if (elapsed > 240) break;
     }
-    nodelay(w, FALSE);
+    nodelay(msgWin, FALSE);
 
     for (int i = 0; i < 4; ++i) {
-        werase(w);
-        box(w, 0, 0);
-        if (hasColor) wattron(w, COLOR_PAIR(6));
-        mvwprintw(w, 1, 2, "Spin: %d", result);
-        if (hasColor) wattroff(w, COLOR_PAIR(6));
-        mvwprintw(w, 2, 2, "Press ENTER to confirm");
-        wrefresh(w);
-        napms(150);
+        werase(msgWin);
+        box(msgWin, 0, 0);
+        if (hasColor) wattron(msgWin, COLOR_PAIR(4));
+        mvwprintw(msgWin, 1, 2, "Rolled: %d", value);
+        if (hasColor) wattroff(msgWin, COLOR_PAIR(4));
+        mvwprintw(msgWin, 2, 2, "Press ENTER to confirm");
+        wrefresh(msgWin);
+        napms(140);
 
-        werase(w);
-        box(w, 0, 0);
-        mvwprintw(w, 1, 2, "Spin: %d", result);
-        mvwprintw(w, 2, 2, "Press ENTER to confirm");
-        wrefresh(w);
-        napms(150);
+        werase(msgWin);
+        box(msgWin, 0, 0);
+        mvwprintw(msgWin, 1, 2, "Rolled: %d", value);
+        mvwprintw(msgWin, 2, 2, "Press ENTER to confirm");
+        wrefresh(msgWin);
+        napms(140);
     }
 
-    int key;
-    do {
-        key = wgetch(w);
-    } while (key != '\n' && key != KEY_ENTER);
-
-    return result;
-}
-
-static int askChoice(WINDOW* w, const std::string& prompt, char a, char b) {
-    werase(w);
-    box(w, 0, 0);
-    mvwprintw(w, 1, 2, "%s [%c/%c]", prompt.c_str(), a, b);
-    wrefresh(w);
-    int ch;
-    while (true) {
-        ch = wgetch(w);
-        if (ch == a || ch == b) return ch;
-        if (ch == a + 32 || ch == b + 32) return ch - 32;
-    }
-}
-
-static void applyEffect(Player& p, int node, WINDOW* w) {
-    werase(w);
-    box(w, 0, 0);
-
-    switch (node) {
-        case START:
-            mvwprintw(w, 1, 2, "START: Begin your journey.");
-            break;
-        case COLLEGE:
-            p.cash -= 10000;
-            p.cash += 20000;
-            mvwprintw(w, 1, 2, "COLLEGE: -$10K +$20K loan.");
-            break;
-        case CAREER:
-            p.job = "Clerk";
-            p.salary = 3000;
-            mvwprintw(w, 1, 2, "CAREER: Clerk ($3000 salary).");
-            break;
-        case GRADUATION:
-            if (p.job == "Clerk") {
-                p.job = "Manager";
-                p.salary = 5000;
-                mvwprintw(w, 1, 2, "GRADUATION: Manager ($5000).");
-            } else {
-                p.job = "Doctor";
-                p.salary = 8000;
-                mvwprintw(w, 1, 2, "GRADUATION: Doctor ($8000).");
-            }
-            break;
-        case WEDDING:
-            p.cash -= 5000;
-            p.married = true;
-            mvwprintw(w, 1, 2, "WEDDING: -$5000. Married = Yes.");
-            break;
-        case FAMILY_PATH:
-            p.kids += 1;
-            p.cash -= 2000;
-            mvwprintw(w, 1, 2, "FAMILY PATH: +1 kid, -$2000.");
-            break;
-        case CAREER_PATH:
-            p.salary += 5000;
-            mvwprintw(w, 1, 2, "CAREER PATH: +$5000 salary.");
-            break;
-        case HOUSE:
-            p.cash -= 50000;
-            p.hasHouse = true;
-            p.houseValue = 100000;
-            mvwprintw(w, 1, 2, "HOUSE: -$50K, house value $100K.");
-            break;
-        case PROMOTION:
-            p.salary += 5000;
-            mvwprintw(w, 1, 2, "PROMOTION: +$5000 salary.");
-            break;
-        case SAFE_ROAD:
-            p.cash += 3000;
-            mvwprintw(w, 1, 2, "SAFE ROAD: +$3000.");
-            break;
-        case RISK_ROAD: {
-            bool win = (std::rand() % 2) == 0;
-            if (win) {
-                p.cash += 15000;
-                mvwprintw(w, 1, 2, "RISK ROAD: +$15000!");
-            } else {
-                p.cash -= 10000;
-                mvwprintw(w, 1, 2, "RISK ROAD: -$10000.");
-            }
-            break;
-        }
-        case RETIREMENT:
-            p.retired = true;
-            mvwprintw(w, 1, 2, "RETIREMENT: You finished.");
-            break;
-        default:
-            mvwprintw(w, 1, 2, "Nothing happens.");
-            break;
-    }
-
-    wrefresh(w);
-    waitForEnter(w, 2, 2, "Press ENTER to continue");
+    waitForEnter(msgWin, 2, 26, "");
+    return value;
 }
 
 static int totalWorth(const Player& p) {
-    int total = p.cash + (p.kids * 20000);
+    int total = p.cash + p.kids * 20000;
     if (p.hasHouse) total += p.houseValue;
     return total;
+}
+
+static int minRewardForTier(int tier) {
+    if (tier == 2) return 3000;
+    if (tier >= 3) return 5000;
+    return 1000;
+}
+
+static int maxRewardForTier(int tier) {
+    if (tier == 2) return 5000;
+    if (tier >= 3) return 10000;
+    return 2000;
+}
+
+static char tokenForName(const std::string& name, int index) {
+    if (!name.empty()) {
+        char c = name[0];
+        if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+        return c;
+    }
+    return static_cast<char>('A' + index);
+}
+
+static void initTiles(std::vector<Tile>& tiles) {
+    tiles.resize(TILE_COUNT);
+    for (int i = 0; i < TILE_COUNT; ++i) {
+        tiles[i].id = i;
+        tiles[i].y = 1;
+        tiles[i].x = 2;
+        tiles[i].label = "  ";
+        tiles[i].kind = TILE_EMPTY;
+        tiles[i].next = (i < TILE_COUNT - 1) ? i + 1 : -1;
+        tiles[i].altNext = -1;
+        tiles[i].value = 0;
+    }
+
+    for (int i = 0; i <= 11; ++i) {
+        tiles[i].y = 1;
+        tiles[i].x = 16 + (i * 4);
+    }
+
+    tiles[12].y = 4;
+    tiles[12].x = 38;
+
+    for (int i = 13; i <= 24; ++i) {
+        tiles[i].y = 7;
+        tiles[i].x = 2 + ((i - 13) * 4);
+    }
+
+    for (int i = 25; i <= 37; ++i) {
+        tiles[i].y = 10;
+        tiles[i].x = 24 + ((i - 25) * 4);
+    }
+
+    for (int i = 38; i <= 48; ++i) {
+        tiles[i].y = 13;
+        tiles[i].x = 18 + ((i - 38) * 4);
+    }
+
+    for (int i = 49; i <= 58; ++i) {
+        tiles[i].y = 16;
+        tiles[i].x = 20 + ((i - 49) * 4);
+    }
+
+    for (int i = 59; i <= 72; ++i) {
+        tiles[i].y = 19;
+        tiles[i].x = 2 + ((i - 59) * 4);
+    }
+
+    for (int i = 73; i <= 86; ++i) {
+        tiles[i].y = 22;
+        tiles[i].x = 22 + ((i - 73) * 4);
+    }
+
+    tiles[87].y = 25;
+    tiles[87].x = 36;
+    tiles[88].y = 25;
+    tiles[88].x = 40;
+
+    for (int i = 0; i <= 9; ++i) {
+        tiles[i].label = "BK";
+        tiles[i].kind = TILE_BLACK;
+        tiles[i].value = 1;
+    }
+    tiles[10].label = "ST";
+    tiles[10].kind = TILE_START;
+    tiles[11].label = "BK";
+    tiles[11].kind = TILE_BLACK;
+    tiles[11].value = 1;
+    tiles[12].label = "SP";
+    tiles[12].kind = TILE_SPLIT_START;
+    tiles[12].next = 13;
+    tiles[12].altNext = 25;
+
+    tiles[13].label = "COL";
+    tiles[13].kind = TILE_COLLEGE;
+    for (int i = 14; i <= 24; ++i) {
+        tiles[i].label = "BK";
+        tiles[i].kind = TILE_BLACK;
+        tiles[i].value = (i >= 20) ? 2 : 1;
+    }
+    tiles[24].next = 38;
+
+    tiles[25].label = "CAR";
+    tiles[25].kind = TILE_CAREER;
+    for (int i = 26; i <= 37; ++i) {
+        tiles[i].label = "BK";
+        tiles[i].kind = TILE_BLACK;
+        tiles[i].value = (i >= 33) ? 2 : 1;
+    }
+    tiles[37].next = 38;
+
+    tiles[38].label = "GRD";
+    tiles[38].kind = TILE_GRADUATION;
+    for (int i = 39; i <= 48; ++i) {
+        tiles[i].label = "BK";
+        tiles[i].kind = TILE_BLACK;
+        tiles[i].value = 2;
+    }
+    tiles[41].label = "PAY";
+    tiles[41].kind = TILE_PAYDAY;
+    tiles[41].value = 4000;
+    tiles[44].label = "WED";
+    tiles[44].kind = TILE_MARRIAGE;
+    tiles[47].label = "PAY";
+    tiles[47].kind = TILE_PAYDAY;
+    tiles[47].value = 5000;
+
+    for (int i = 49; i <= 57; ++i) {
+        tiles[i].label = "BK";
+        tiles[i].kind = TILE_BLACK;
+        tiles[i].value = 2;
+    }
+    tiles[58].label = "SP";
+    tiles[58].kind = TILE_SPLIT_FAMILY;
+    tiles[49].next = 50;
+    tiles[58].next = 59;
+    tiles[58].altNext = 73;
+
+    for (int i = 59; i <= 72; ++i) {
+        tiles[i].label = "BK";
+        tiles[i].kind = TILE_BLACK;
+        tiles[i].value = 2;
+    }
+    tiles[60].label = "3B";
+    tiles[60].kind = TILE_BABY;
+    tiles[60].value = 3;
+    tiles[64].label = "2B";
+    tiles[64].kind = TILE_BABY;
+    tiles[64].value = 2;
+    tiles[68].label = "HSE";
+    tiles[68].kind = TILE_HOUSE;
+    tiles[68].value = 100000;
+    tiles[72].label = "1B";
+    tiles[72].kind = TILE_BABY;
+    tiles[72].value = 1;
+    tiles[72].next = 87;
+
+    for (int i = 73; i <= 86; ++i) {
+        tiles[i].label = "BK";
+        tiles[i].kind = TILE_BLACK;
+        tiles[i].value = 2;
+    }
+    tiles[75].label = "PAY";
+    tiles[75].kind = TILE_PAYDAY;
+    tiles[75].value = 5000;
+    tiles[79].label = "PRM";
+    tiles[79].kind = TILE_CAREER_2;
+    tiles[79].value = 3000;
+    tiles[83].label = "PAY";
+    tiles[83].kind = TILE_PAYDAY;
+    tiles[83].value = 7000;
+    tiles[86].label = "BK";
+    tiles[86].value = 3;
+    tiles[86].next = 87;
+
+    tiles[87].label = "RT";
+    tiles[87].kind = TILE_RETIREMENT;
+    tiles[88].label = "RT";
+    tiles[88].kind = TILE_RETIREMENT;
+    tiles[87].next = 88;
+    tiles[88].next = -1;
+}
+
+static int colorForTile(const Tile& tile) {
+    if (tile.kind == TILE_BLACK) return 6;
+    if (tile.kind == TILE_START) return 3;
+    if (tile.kind == TILE_SPLIT_START || tile.kind == TILE_SPLIT_FAMILY) return 4;
+    if (tile.kind == TILE_COLLEGE) return 2;
+    if (tile.kind == TILE_CAREER || tile.kind == TILE_CAREER_2) return 1;
+    if (tile.kind == TILE_PAYDAY) return 7;
+    if (tile.kind == TILE_BABY) return 3;
+    if (tile.kind == TILE_HOUSE) return 2;
+    if (tile.kind == TILE_GRADUATION) return 7;
+    if (tile.kind == TILE_MARRIAGE) return 6;
+    if (tile.kind == TILE_FAMILY) return 7;
+    if (tile.kind == TILE_RETIREMENT) return 3;
+    return 5;
+}
+
+static void drawTreeGuides(WINDOW* boardWin) {
+    mvwvline(boardWin, 2, 39, ACS_VLINE, 2);
+    mvwaddch(boardWin, 4, 39, ACS_TTEE);
+
+    mvwhline(boardWin, 6, 24, ACS_HLINE, 16);
+    mvwvline(boardWin, 5, 24, ACS_VLINE, 2);
+    mvwvline(boardWin, 5, 56, ACS_VLINE, 5);
+    mvwaddch(boardWin, 6, 24, ACS_LTEE);
+    mvwaddch(boardWin, 6, 56, ACS_RTEE);
+
+    mvwvline(boardWin, 11, 39, ACS_VLINE, 2);
+    mvwvline(boardWin, 14, 39, ACS_VLINE, 2);
+    mvwaddch(boardWin, 13, 39, ACS_VLINE);
+
+    mvwhline(boardWin, 18, 26, ACS_HLINE, 14);
+    mvwvline(boardWin, 17, 26, ACS_VLINE, 2);
+    mvwvline(boardWin, 17, 54, ACS_VLINE, 5);
+    mvwaddch(boardWin, 18, 26, ACS_LTEE);
+    mvwaddch(boardWin, 18, 54, ACS_RTEE);
+
+    mvwvline(boardWin, 23, 39, ACS_VLINE, 2);
+}
+
+static int showBranchPopup(WINDOW* parent,
+                           bool hasColor,
+                           const std::string& title,
+                           const std::vector<std::string>& lines,
+                           char a,
+                           char b) {
+    int h, w;
+    getmaxyx(stdscr, h, w);
+    WINDOW* popup = newwin(10, 44, (h - 10) / 2, (w - 44) / 2);
+    applyWindowBg(popup, hasColor);
+    werase(popup);
+    box(popup, 0, 0);
+    if (hasColor) wattron(popup, COLOR_PAIR(4) | A_BOLD);
+    mvwprintw(popup, 1, 2, "%s", title.c_str());
+    if (hasColor) wattroff(popup, COLOR_PAIR(4) | A_BOLD);
+    for (size_t i = 0; i < lines.size(); ++i) {
+        mvwprintw(popup, 3 + static_cast<int>(i), 2, "%s", lines[i].c_str());
+    }
+    mvwprintw(popup, 8, 2, "[%c] or [%c]", a, b);
+    wrefresh(popup);
+
+    int ch;
+    while (true) {
+        ch = wgetch(popup);
+        if (ch == a || ch == a + 32) {
+            delwin(popup);
+            touchwin(parent);
+            wrefresh(parent);
+            return a;
+        }
+        if (ch == b || ch == b + 32) {
+            delwin(popup);
+            touchwin(parent);
+            wrefresh(parent);
+            return b;
+        }
+    }
+}
+
+static void renderGame(WINDOW* titleWin,
+                       WINDOW* boardWin,
+                       WINDOW* infoWin,
+                       WINDOW* msgWin,
+                       const std::vector<Tile>& tiles,
+                       const std::vector<Player>& players,
+                       int currentPlayer,
+                       bool hasColor,
+                       const std::string& msg) {
+    werase(titleWin);
+    if (hasColor) wattron(titleWin, COLOR_PAIR(5));
+    mvwprintw(titleWin, 0, 1,  "  ________       .__       .___                   .__     ");
+    mvwprintw(titleWin, 1, 1,  " /  _____/  ____ |  |    __| _/______ __ __  _____|  |__  ");
+    mvwprintw(titleWin, 2, 1,  "/   \\  ___ /  _ \\|  |   / __ |\\_  __ \\  |  \\/  ___/  |  \\ ");
+    mvwprintw(titleWin, 3, 1,  "\\    \\_\\  (  <_> )  |__/ /_/ | |  | \\/  |  /\\___ \\|   Y  \\");
+    mvwprintw(titleWin, 4, 1,  " \\______  /\\____/|____/\\____ | |__|  |____//____  >___|  /");
+    mvwprintw(titleWin, 5, 1,  "        \\/                  \\/                  \\/     \\/ ");
+    mvwprintw(titleWin, 6, 2,  "Early Life -> Split -> College/Career -> Marriage -> Split -> Family/Career -> Retirement");
+    if (hasColor) wattroff(titleWin, COLOR_PAIR(5));
+    wrefresh(titleWin);
+
+    werase(boardWin);
+    box(boardWin, 0, 0);
+    drawTreeGuides(boardWin);
+    for (int i = 0; i < TILE_COUNT; ++i) {
+        const Tile& tile = tiles[i];
+        int color = colorForTile(tile);
+        mvwaddch(boardWin, tile.y, tile.x, '[');
+        if (hasColor) wattron(boardWin, COLOR_PAIR(color));
+        mvwprintw(boardWin, tile.y, tile.x + 1, "  ");
+        if (hasColor) wattroff(boardWin, COLOR_PAIR(color));
+        mvwaddch(boardWin, tile.y, tile.x + 3, ']');
+        mvwprintw(boardWin, tile.y + 1, tile.x + 1, "%s", tile.label.c_str());
+    }
+
+    for (int i = 0; i < TILE_COUNT; ++i) {
+        int slot = 0;
+        for (size_t p = 0; p < players.size(); ++p) {
+            if (players[p].tile != i) continue;
+            if (slot >= 2) break;
+            if (hasColor) wattron(boardWin, COLOR_PAIR(1 + static_cast<int>(p % 4)) | A_BOLD);
+            mvwaddch(boardWin, tiles[i].y, tiles[i].x + 1 + slot, players[p].token);
+            if (hasColor) wattroff(boardWin, COLOR_PAIR(1 + static_cast<int>(p % 4)) | A_BOLD);
+            slot++;
+        }
+    }
+    wrefresh(boardWin);
+
+    const Player& p = players[currentPlayer];
+    werase(infoWin);
+    box(infoWin, 0, 0);
+    if (hasColor) wattron(infoWin, COLOR_PAIR(1 + (currentPlayer % 4)) | A_BOLD);
+    mvwprintw(infoWin, 1, 2, "Player: %s [%c]  Tile: %d  Cash: $%d  Job: %s",
+              p.name.c_str(), p.token, p.tile, p.cash, p.job.c_str());
+    if (hasColor) wattroff(infoWin, COLOR_PAIR(1 + (currentPlayer % 4)) | A_BOLD);
+    mvwprintw(infoWin, 2, 2, "Salary: $%d  Married: %s  Kids: %d  House: %s  [ENTER] Roll  [Q] Quit",
+              p.salary, p.married ? "Yes" : "No", p.kids, p.hasHouse ? "Yes" : "No");
+    wrefresh(infoWin);
+
+    werase(msgWin);
+    box(msgWin, 0, 0);
+    mvwprintw(msgWin, 1, 2, "%s", msg.c_str());
+    wrefresh(msgWin);
+}
+
+static bool showStartScreen(bool hasColor) {
+    while (true) {
+        int h, w;
+        getmaxyx(stdscr, h, w);
+        clear();
+        if (hasColor) bkgd(COLOR_PAIR(5));
+
+        const char* lines[] = {
+            "  ________       .__       .___                   .__     ",
+            " /  _____/  ____ |  |    __| _/______ __ __  _____|  |__  ",
+            "/   \\  ___ /  _ \\|  |   / __ |\\_  __ \\  |  \\/  ___/  |  \\ ",
+            "\\    \\_\\  (  <_> )  |__/ /_/ | |  | \\/  |  /\\___ \\|   Y  \\",
+            " \\______  /\\____/|____/\\____ | |__|  |____//____  >___|  /",
+            "        \\/                  \\/                  \\/     \\/ "
+        };
+
+        int artW = 60;
+        int startY = (h / 2) - 6;
+        int startX = (w - artW) / 2;
+        if (startY < 1) startY = 1;
+        if (startX < 0) startX = 0;
+
+        if (hasColor) wattron(stdscr, COLOR_PAIR(8) | A_BOLD);
+        for (int i = 0; i < 6; ++i) {
+            mvprintw(startY + i, startX, "%s", lines[i]);
+        }
+        if (hasColor) wattroff(stdscr, COLOR_PAIR(8) | A_BOLD);
+
+        if (hasColor) wattron(stdscr, COLOR_PAIR(3) | A_BOLD);
+        mvprintw(startY + 8, (w - 8) / 2, "GOLDRUSH");
+        if (hasColor) wattroff(stdscr, COLOR_PAIR(3) | A_BOLD);
+
+        mvprintw(startY + 11, (w - 20) / 2, "S  Start    Q  Quit");
+        refresh();
+
+        int ch = getch();
+        if (ch == 's' || ch == 'S') return true;
+        if (ch == 'q' || ch == 'Q') return false;
+        if (ch == KEY_RESIZE && !ensureMinSize(hasColor)) return false;
+    }
+}
+
+static int playActionCard(WINDOW* parent, const Tile& tile, Player& p, bool hasColor) {
+    int h, w;
+    getmaxyx(stdscr, h, w);
+    WINDOW* popup = newwin(9, 34, (h - 9) / 2, (w - 34) / 2);
+    applyWindowBg(popup, hasColor);
+
+    int minAmount = minRewardForTier(tile.value);
+    int maxAmount = maxRewardForTier(tile.value);
+    int amount = minAmount + (std::rand() % (maxAmount - minAmount + 1));
+    MiniGameKind game = static_cast<MiniGameKind>(std::rand() % 3);
+    int ch;
+
+    if (game == MINIGAME_RED_BLACK) {
+        werase(popup);
+        box(popup, 0, 0);
+        mvwprintw(popup, 1, 2, "BLACK TILE ACTION");
+        mvwprintw(popup, 2, 2, "Mini Game: Red / Black");
+        mvwprintw(popup, 4, 2, "Pick [R]ed or [B]lack");
+        mvwprintw(popup, 6, 2, "Win or lose: $%d", amount);
+        wrefresh(popup);
+
+        char guess = 'R';
+        while (true) {
+            ch = wgetch(popup);
+            if (ch == 'r' || ch == 'R') { guess = 'R'; break; }
+            if (ch == 'b' || ch == 'B') { guess = 'B'; break; }
+        }
+
+        char result = (std::rand() % 2 == 0) ? 'R' : 'B';
+        bool win = (guess == result);
+        if (win) p.cash += amount;
+        else p.cash -= amount;
+
+        werase(popup);
+        box(popup, 0, 0);
+        if (hasColor) wattron(popup, COLOR_PAIR(win ? 3 : 6));
+        mvwprintw(popup, 1, 2, "The wheel landed on %s!", result == 'R' ? "RED" : "BLACK");
+        mvwprintw(popup, 3, 2, "You %s $%d", win ? "WIN" : "LOSE", amount);
+        if (hasColor) wattroff(popup, COLOR_PAIR(win ? 3 : 6));
+        mvwprintw(popup, 5, 2, "New cash: $%d", p.cash);
+        mvwprintw(popup, 6, 2, "Press ENTER");
+        wrefresh(popup);
+    } else if (game == MINIGAME_MATH) {
+        int a = 2 + (std::rand() % 9);
+        int b = 1 + (std::rand() % 9);
+        bool add = (std::rand() % 2 == 0);
+        int answer = add ? (a + b) : (a - b);
+        if (!add && a < b) {
+            int t = a;
+            a = b;
+            b = t;
+            answer = a - b;
+        }
+
+        echo();
+        curs_set(1);
+        werase(popup);
+        box(popup, 0, 0);
+        mvwprintw(popup, 1, 2, "BLACK TILE ACTION");
+        mvwprintw(popup, 2, 2, "Mini Game: Quick Math");
+        mvwprintw(popup, 4, 2, "Solve: %d %c %d = ", a, add ? '+' : '-', b);
+        mvwprintw(popup, 6, 2, "Win or lose: $%d", amount);
+        wrefresh(popup);
+
+        char buf[16] = {0};
+        wgetnstr(popup, buf, 15);
+        noecho();
+        curs_set(0);
+        int guess = std::atoi(buf);
+        bool win = (guess == answer);
+        if (win) p.cash += amount;
+        else p.cash -= amount;
+
+        werase(popup);
+        box(popup, 0, 0);
+        if (hasColor) wattron(popup, COLOR_PAIR(win ? 3 : 6));
+        mvwprintw(popup, 1, 2, "Correct answer: %d", answer);
+        mvwprintw(popup, 3, 2, "You %s $%d", win ? "WIN" : "LOSE", amount);
+        if (hasColor) wattroff(popup, COLOR_PAIR(win ? 3 : 6));
+        mvwprintw(popup, 5, 2, "New cash: $%d", p.cash);
+        mvwprintw(popup, 6, 2, "Press ENTER");
+        wrefresh(popup);
+    } else {
+        werase(popup);
+        box(popup, 0, 0);
+        mvwprintw(popup, 1, 2, "BLACK TILE ACTION");
+        mvwprintw(popup, 2, 2, "Mini Game: Odd / Even");
+        mvwprintw(popup, 4, 2, "Pick [O]dd or [E]ven");
+        mvwprintw(popup, 6, 2, "Win or lose: $%d", amount);
+        wrefresh(popup);
+
+        char guess = 'O';
+        while (true) {
+            ch = wgetch(popup);
+            if (ch == 'o' || ch == 'O') { guess = 'O'; break; }
+            if (ch == 'e' || ch == 'E') { guess = 'E'; break; }
+        }
+
+        int spin = 1 + (std::rand() % 10);
+        bool even = (spin % 2 == 0);
+        bool win = (guess == 'E' && even) || (guess == 'O' && !even);
+        if (win) p.cash += amount;
+        else p.cash -= amount;
+
+        werase(popup);
+        box(popup, 0, 0);
+        if (hasColor) wattron(popup, COLOR_PAIR(win ? 3 : 6));
+        mvwprintw(popup, 1, 2, "Spin: %d", spin);
+        mvwprintw(popup, 2, 2, "%s number!", even ? "Even" : "Odd");
+        mvwprintw(popup, 3, 2, "You %s $%d", win ? "WIN" : "LOSE", amount);
+        if (hasColor) wattroff(popup, COLOR_PAIR(win ? 3 : 6));
+        mvwprintw(popup, 5, 2, "New cash: $%d", p.cash);
+        mvwprintw(popup, 6, 2, "Press ENTER");
+        wrefresh(popup);
+    }
+
+    do {
+        ch = wgetch(popup);
+    } while (ch != '\n' && ch != KEY_ENTER);
+
+    delwin(popup);
+    touchwin(parent);
+    wrefresh(parent);
+    return amount;
+}
+
+static void applyTileEffect(Player& p, const Tile& tile, WINDOW* msgWin, bool hasColor) {
+    std::string line = "Nothing happens here.";
+
+    switch (tile.kind) {
+        case TILE_START:
+            line = "START: The journey begins.";
+            break;
+        case TILE_BLACK:
+            playActionCard(msgWin, tile, p, hasColor);
+            return;
+        case TILE_COLLEGE:
+            p.cash += 10000;
+            line = "COLLEGE: -$10K tuition, +$20K loan.";
+            break;
+        case TILE_CAREER:
+            p.job = "Clerk";
+            p.salary = 3000;
+            line = "CAREER: You became a Clerk ($3000).";
+            break;
+        case TILE_GRADUATION:
+            if (p.startChoice == 0) {
+                p.job = "Doctor";
+                p.salary = 8000;
+                line = "GRADUATION: Doctor path unlocked. Salary is now $8000.";
+            } else {
+                p.job = "Manager";
+                p.salary = 5000;
+                line = "GRADUATION: Career path pays off. Salary is now $5000.";
+            }
+            break;
+        case TILE_MARRIAGE:
+            p.cash -= 5000;
+            p.married = true;
+            line = "MARRIAGE: -$5000 and married.";
+            break;
+        case TILE_FAMILY:
+            p.kids += 1;
+            p.cash -= 2000;
+            line = "FAMILY PATH: +1 kid and -$2000.";
+            break;
+        case TILE_CAREER_2:
+            p.salary += tile.value;
+            line = "CAREER PATH: promotion! Salary increased.";
+            break;
+        case TILE_PAYDAY:
+            p.cash += tile.value;
+            line = "PAYDAY: cash increased.";
+            break;
+        case TILE_BABY:
+            p.kids += tile.value;
+            p.cash -= tile.value * 1000;
+            line = "FAMILY ROAD: babies added to the family.";
+            break;
+        case TILE_HOUSE:
+            p.cash -= 50000;
+            p.hasHouse = true;
+            p.houseValue = tile.value;
+            line = "HOUSE: bought a house on the family road.";
+            break;
+        case TILE_RETIREMENT:
+            if (tile.id == 88) {
+                p.retired = true;
+                line = "RETIREMENT: You finished the game.";
+            } else {
+                line = "Retirement stretch.";
+            }
+            break;
+        case TILE_SPLIT_START:
+        case TILE_SPLIT_FAMILY:
+        case TILE_EMPTY:
+        default:
+            line = "Keep moving.";
+            break;
+    }
+
+    werase(msgWin);
+    box(msgWin, 0, 0);
+    mvwprintw(msgWin, 1, 2, "%s", line.c_str());
+    mvwprintw(msgWin, 2, 2, "Press ENTER to continue");
+    wrefresh(msgWin);
+    int ch;
+    do {
+        ch = wgetch(msgWin);
+    } while (ch != '\n' && ch != KEY_ENTER);
+}
+
+static int chooseNextTile(Player& p, const Tile& tile, WINDOW* msgWin) {
+    if (tile.kind == TILE_SPLIT_START && p.startChoice == -1) {
+        int c = showBranchPopup(
+            msgWin,
+            has_colors(),
+            "College or Career?",
+            std::vector<std::string>{
+                "A: College",
+                "   Bigger debt now, stronger graduation payoff.",
+                "B: Career",
+                "   Start earning sooner, steadier path."
+            },
+            'A',
+            'B');
+        p.startChoice = (c == 'A') ? 0 : 1;
+    }
+    if (tile.kind == TILE_SPLIT_FAMILY && tile.id == 58 && p.familyChoice == -1) {
+        int c = showBranchPopup(
+            msgWin,
+            has_colors(),
+            "Family or Career?",
+            std::vector<std::string>{
+                "A: Family",
+                "   More babies, house chances, more chaos.",
+                "B: Career",
+                "   More payday tiles, promotions, black cards."
+            },
+            'A',
+            'B');
+        p.familyChoice = (c == 'A') ? 0 : 1;
+    }
+
+    if (tile.kind == TILE_SPLIT_START) {
+        return (p.startChoice == 0) ? tile.next : tile.altNext;
+    }
+    if (tile.kind == TILE_SPLIT_FAMILY && tile.id == 58) {
+        return (p.familyChoice == 0) ? tile.next : tile.altNext;
+    }
+    return tile.next;
+}
+
+static void animateMove(WINDOW* titleWin,
+                        WINDOW* boardWin,
+                        WINDOW* infoWin,
+                        WINDOW* msgWin,
+                        const std::vector<Tile>& tiles,
+                        std::vector<Player>& players,
+                        int currentPlayer,
+                        int steps,
+                        bool hasColor) {
+    Player& p = players[currentPlayer];
+    for (int step = 0; step < steps; ++step) {
+        const Tile& current = tiles[p.tile];
+        int nextTile = chooseNextTile(p, current, msgWin);
+        if (nextTile < 0) break;
+        p.tile = nextTile;
+        renderGame(titleWin, boardWin, infoWin, msgWin, tiles, players, currentPlayer, hasColor,
+                   p.name + " moved to tile " + std::to_string(p.tile));
+        napms(170);
+    }
 }
 
 int main() {
@@ -314,13 +875,14 @@ int main() {
     bool hasColor = has_colors();
     if (hasColor) {
         start_color();
-        init_pair(1, COLOR_GREEN, COLOR_BLACK);   // Player 1
-        init_pair(2, COLOR_CYAN, COLOR_BLACK);    // Player 2
-        init_pair(3, COLOR_MAGENTA, COLOR_BLACK); // Player 3
-        init_pair(4, COLOR_YELLOW, COLOR_BLACK);  // Player 4
-        init_pair(5, COLOR_WHITE, COLOR_BLACK);   // Default text
-        init_pair(6, COLOR_RED, COLOR_BLACK);     // Risk / blink
-        init_pair(7, COLOR_BLUE, COLOR_BLACK);    // Safe
+        init_pair(1, COLOR_GREEN, COLOR_BLACK);
+        init_pair(2, COLOR_CYAN, COLOR_BLACK);
+        init_pair(3, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(4, COLOR_MAGENTA, COLOR_BLACK);
+        init_pair(5, COLOR_WHITE, COLOR_BLACK);
+        init_pair(6, COLOR_RED, COLOR_BLACK);
+        init_pair(7, COLOR_BLUE, COLOR_BLACK);
+        init_pair(8, COLOR_YELLOW, COLOR_BLACK);
         bkgd(COLOR_PAIR(5));
     }
 
@@ -329,39 +891,23 @@ int main() {
         return 0;
     }
 
+    if (!showStartScreen(hasColor)) {
+        endwin();
+        return 0;
+    }
+
     WINDOW* titleWin = nullptr;
     WINDOW* boardWin = nullptr;
     WINDOW* infoWin = nullptr;
     WINDOW* msgWin = nullptr;
+
     int termH, termW;
     getmaxyx(stdscr, termH, termW);
     createWindows(termH, termW, titleWin, boardWin, infoWin, msgWin, hasColor);
 
-    std::vector<Node> nodes(NODE_COUNT);
-    nodes[START] = {"START", 2, 8, COLLEGE, CAREER, true};
-    nodes[COLLEGE] = {"COLLEGE", 4, 8, GRADUATION, -1, false};
-    nodes[CAREER] = {"CAREER", 4, 28, GRADUATION, -1, false};
-    nodes[GRADUATION] = {"GRAD", 5, 18, WEDDING, -1, false};
-    nodes[WEDDING] = {"WEDDING", 6, 18, BRANCH_FC, -1, false};
-    nodes[BRANCH_FC] = {"BRANCH", 7, 18, FAMILY_PATH, CAREER_PATH, true};
-    nodes[FAMILY_PATH] = {"FAMILY", 7, 10, HOUSE, -1, false};
-    nodes[HOUSE] = {"HOUSE", 9, 10, BRANCH_SR, -1, false};
-    nodes[CAREER_PATH] = {"CAREER", 7, 26, PROMOTION, -1, false};
-    nodes[PROMOTION] = {"PROMO", 9, 26, BRANCH_SR, -1, false};
-    nodes[BRANCH_SR] = {"BRANCH", 10, 18, SAFE_ROAD, RISK_ROAD, true};
-    nodes[SAFE_ROAD] = {"SAFE", 10, 10, RETIREMENT, -1, false};
-    nodes[RISK_ROAD] = {"RISK", 10, 26, RETIREMENT, -1, false};
-    nodes[RETIREMENT] = {"RETIRE", 12, 18, -1, -1, false};
+    std::vector<Tile> tiles;
+    initTiles(tiles);
 
-    // Title
-    werase(titleWin);
-    box(titleWin, 0, 0);
-    if (hasColor) wattron(titleWin, COLOR_PAIR(5));
-    mvwprintw(titleWin, 1, 22, "T H E   G A M E   O F   L I F E");
-    if (hasColor) wattroff(titleWin, COLOR_PAIR(5));
-    wrefresh(titleWin);
-
-    // Start screen: ask player count and names
     echo();
     curs_set(1);
     int numPlayers = 0;
@@ -382,18 +928,29 @@ int main() {
         box(msgWin, 0, 0);
         mvwprintw(msgWin, 1, 2, "Player %d name: ", i + 1);
         wrefresh(msgWin);
-        char namebuf[32] = {0};
-        wgetnstr(msgWin, namebuf, 31);
+        char nameBuf[32] = {0};
+        wgetnstr(msgWin, nameBuf, 31);
         Player p;
-        p.name = namebuf;
+        p.name = nameBuf;
+        p.token = tokenForName(p.name, i);
+        p.tile = 0;
+        p.cash = 10000;
+        p.job = "Unemployed";
+        p.salary = 0;
+        p.married = false;
+        p.kids = 0;
+        p.hasHouse = false;
+        p.houseValue = 0;
+        p.retired = false;
+        p.startChoice = -1;
+        p.familyChoice = -1;
         players.push_back(p);
     }
     noecho();
     curs_set(0);
 
+    int currentPlayer = 0;
     bool allRetired = false;
-    int current = 0;
-
     while (!allRetired) {
         if (!ensureMinSize(hasColor)) {
             destroyWindows(titleWin, boardWin, infoWin, msgWin);
@@ -404,149 +961,58 @@ int main() {
         destroyWindows(titleWin, boardWin, infoWin, msgWin);
         createWindows(termH, termW, titleWin, boardWin, infoWin, msgWin, hasColor);
 
-        Player& p = players[current];
-        if (p.retired) {
-            current = (current + 1) % numPlayers;
+        if (players[currentPlayer].retired) {
+            currentPlayer = (currentPlayer + 1) % numPlayers;
+            allRetired = true;
+            for (int i = 0; i < numPlayers; ++i) {
+                if (!players[i].retired) allRetired = false;
+            }
             continue;
         }
 
-    // Draw board
-        werase(boardWin);
-        box(boardWin, 0, 0);
+        renderGame(titleWin, boardWin, infoWin, msgWin, tiles, players, currentPlayer, hasColor,
+                   players[currentPlayer].name + "'s turn");
 
-        // Draw path lines
-        drawVLine(boardWin, 6, 2, 4);
-        drawVLine(boardWin, 32, 2, 4);
-        drawHLine(boardWin, 4, 6, 32);
-        drawVLine(boardWin, 19, 4, 7);
-        drawVLine(boardWin, 9, 7, 9);
-        drawVLine(boardWin, 29, 7, 9);
-        drawHLine(boardWin, 7, 9, 29);
-        drawVLine(boardWin, 19, 9, 10);
-        drawHLine(boardWin, 10, 9, 29);
-
-        mvwaddch(boardWin, 4, 6, ACS_LLCORNER);
-        mvwaddch(boardWin, 4, 32, ACS_LRCORNER);
-        mvwaddch(boardWin, 7, 19, ACS_PLUS);
-        mvwaddch(boardWin, 10, 19, ACS_PLUS);
-
-        // Labels
-        for (int i = 0; i < NODE_COUNT; ++i) {
-            int y = nodes[i].y;
-            int x = nodes[i].x;
-            // Draw tile box (3x9)
-            mvwaddch(boardWin, y - 1, x - 2, ACS_ULCORNER);
-            drawHLine(boardWin, y - 1, x - 1, x + 6);
-            mvwaddch(boardWin, y - 1, x + 7, ACS_URCORNER);
-            drawVLine(boardWin, x - 2, y, y + 1);
-            drawVLine(boardWin, x + 7, y, y + 1);
-            mvwaddch(boardWin, y + 2, x - 2, ACS_LLCORNER);
-            drawHLine(boardWin, y + 2, x - 1, x + 6);
-            mvwaddch(boardWin, y + 2, x + 7, ACS_LRCORNER);
-
-            if (hasColor) {
-                int color = 5;
-                if (i == SAFE_ROAD) color = 7;
-                if (i == RISK_ROAD) color = 6;
-                wattron(boardWin, COLOR_PAIR(color));
-                mvwprintw(boardWin, y, x, "%s", nodes[i].name.c_str());
-                wattroff(boardWin, COLOR_PAIR(color));
-            } else {
-                mvwprintw(boardWin, y, x, "%s", nodes[i].name.c_str());
-            }
-        }
-
-        // Tokens
-        for (int i = 0; i < numPlayers; ++i) {
-            int ny = nodes[players[i].node].y;
-            int nx = nodes[players[i].node].x + 1;
-            if (hasColor) wattron(boardWin, COLOR_PAIR(1 + (i % 4)));
-            mvwaddch(boardWin, ny + 1, nx + (i % 4), '1' + i);
-            if (hasColor) wattroff(boardWin, COLOR_PAIR(1 + (i % 4)));
-        }
-
-        wrefresh(boardWin);
-
-        // Info panel (current player)
-        werase(infoWin);
-        box(infoWin, 0, 0);
-        mvwprintw(infoWin, 1, 2, "PLAYER: %s", p.name.c_str());
-        mvwprintw(infoWin, 2, 2, "Cash: $%d  Job: %s  Salary: $%d", p.cash, p.job.c_str(), p.salary);
-        mvwprintw(infoWin, 3, 2, "Married: %s  Kids: %d", p.married ? "Yes" : "No", p.kids);
-        mvwprintw(infoWin, 4, 2, "House: %s", p.hasHouse ? "Yes" : "No");
-        mvwprintw(infoWin, 5, 2, "[ENTER] Spin  |  [Q] Quit");
-        wrefresh(infoWin);
-
-        // Wait for ENTER or Q
         int ch;
         do {
             ch = wgetch(infoWin);
             if (ch == 'q' || ch == 'Q') {
+                destroyWindows(titleWin, boardWin, infoWin, msgWin);
                 endwin();
                 return 0;
             }
         } while (ch != '\n' && ch != KEY_ENTER);
 
-        int roll = spin(msgWin, hasColor);
+        int roll = rollSpinner(msgWin, hasColor);
+        animateMove(titleWin, boardWin, infoWin, msgWin, tiles, players, currentPlayer, roll, hasColor);
+        applyTileEffect(players[currentPlayer], tiles[players[currentPlayer].tile], msgWin, hasColor);
 
-        // Move steps without forcing branch choice mid-move.
-        for (int step = 0; step < roll; ++step) {
-            int n = p.node;
-            if (n == START && p.choiceStart != -1) {
-                p.node = (p.choiceStart == 0) ? nodes[n].next : nodes[n].altNext;
-            } else if (n == BRANCH_FC && p.choiceFC != -1) {
-                p.node = (p.choiceFC == 0) ? nodes[n].next : nodes[n].altNext;
-            } else if (n == BRANCH_SR && p.choiceSR != -1) {
-                p.node = (p.choiceSR == 0) ? nodes[n].next : nodes[n].altNext;
-            } else {
-                p.node = nodes[n].next;
-            }
-            if (p.node < 0) break;
-        }
-
-        // If landed on a branch node, ask for the next move.
-        if (p.node == START) {
-            int c = askChoice(msgWin, "Choose path: [A] College / [B] Career", 'A', 'B');
-            p.choiceStart = (c == 'A') ? 0 : 1;
-        } else if (p.node == BRANCH_FC) {
-            int c = askChoice(msgWin, "Choose path: [A] Family / [B] Career", 'A', 'B');
-            p.choiceFC = (c == 'A') ? 0 : 1;
-        } else if (p.node == BRANCH_SR) {
-            int c = askChoice(msgWin, "Choose road: [A] Safe / [B] Risk", 'A', 'B');
-            p.choiceSR = (c == 'A') ? 0 : 1;
-        }
-
-        applyEffect(p, p.node, msgWin);
-
-        // Check retirement
         allRetired = true;
-        for (const auto& pl : players) {
-            if (!pl.retired) {
+        for (int i = 0; i < numPlayers; ++i) {
+            if (!players[i].retired) {
                 allRetired = false;
                 break;
             }
         }
-
-        current = (current + 1) % numPlayers;
+        currentPlayer = (currentPlayer + 1) % numPlayers;
     }
 
-    // Game over
-    werase(msgWin);
-    box(msgWin, 0, 0);
-    mvwprintw(msgWin, 1, 2, "GAME OVER!");
-
-    int best = 0;
-    int bestScore = totalWorth(players[0]);
+    int winner = 0;
+    int best = totalWorth(players[0]);
     for (int i = 1; i < numPlayers; ++i) {
-        int score = totalWorth(players[i]);
-        if (score > bestScore) {
-            bestScore = score;
-            best = i;
+        int worth = totalWorth(players[i]);
+        if (worth > best) {
+            best = worth;
+            winner = i;
         }
     }
-    mvwprintw(msgWin, 2, 2, "%s wins! Total: $%d", players[best].name.c_str(), bestScore);
+
+    werase(msgWin);
+    box(msgWin, 0, 0);
+    mvwprintw(msgWin, 1, 2, "Game Over! %s wins with $%d.", players[winner].name.c_str(), best);
+    mvwprintw(msgWin, 2, 2, "Press ENTER to exit");
     wrefresh(msgWin);
-    waitForEnter(msgWin, 2, 40, "Press ENTER to exit");
+    waitForEnter(msgWin, 2, 22, "");
 
     destroyWindows(titleWin, boardWin, infoWin, msgWin);
     endwin();
