@@ -6,7 +6,6 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
-#include <ctime>
 #include <sstream>
 
 namespace {
@@ -23,7 +22,8 @@ std::string appendLoanText(const std::string& base, const PaymentResult& payment
 
 Game::Game()
     : rules(makeNormalRules()),
-      decks(rules),
+      rng(),
+      decks(rules, rng),
       bank(rules),
       history(6),
       titleWin(nullptr),
@@ -32,7 +32,20 @@ Game::Game()
       msgWin(nullptr),
       hasColor(has_colors()),
       retiredCount(0) {
-    std::srand(static_cast<unsigned>(std::time(nullptr)));
+}
+
+Game::Game(std::uint32_t seed)
+    : rules(makeNormalRules()),
+      rng(seed),
+      decks(rules, rng),
+      bank(rules),
+      history(6),
+      titleWin(nullptr),
+      boardWin(nullptr),
+      infoWin(nullptr),
+      msgWin(nullptr),
+      hasColor(has_colors()),
+      retiredCount(0) {
 }
 
 Game::~Game() {
@@ -468,7 +481,7 @@ int Game::rollSpinner(const std::string& title, const std::string& detail) {
     auto lastSpace = std::chrono::steady_clock::now();
     int value = 1;
     while (true) {
-        value = (std::rand() % 10) + 1;
+        value = rng.roll10();
         werase(msgWin);
         box(msgWin, 0, 0);
         mvwprintw(msgWin, 1, 2, "%s", title.c_str());
@@ -507,70 +520,204 @@ int Game::showBranchPopup(const std::string& title,
     return choose_branch_with_selector(title, lines, values, 0);
 }
 
-int Game::playActionCard(const Tile& tile, Player& player) {
-    ActionCard card = decks.drawActionCard();
-    player.actionCards.push_back(card.title);
+int Game::findPreviousTile(const Player& player, int tileId) const {
+    std::vector<int> candidates;
+    for (int i = 0; i < TILE_COUNT; ++i) {
+        const Tile& tile = board.tileAt(i);
+        if (tile.next == tileId || tile.altNext == tileId) {
+            candidates.push_back(i);
+        }
+    }
 
-    int amount = 0;
+    if (candidates.empty()) {
+        return tileId;
+    }
+    if (candidates.size() == 1) {
+        return candidates[0];
+    }
+
+    if (tileId == 38) {
+        return player.startChoice == 0 ? 24 : 37;
+    }
+    if (tileId == 86) {
+        return player.riskChoice == 0 ? 82 : 85;
+    }
+    if (tileId == 87) {
+        return player.familyChoice == 0 ? 72 : 86;
+    }
+
+    return candidates.back();
+}
+
+std::string Game::movePlayerByAction(int playerIndex, int steps) {
+    Player& player = players[playerIndex];
+    if (steps == 0) {
+        return "No movement.";
+    }
+
+    const int totalSteps = steps > 0 ? steps : -steps;
+    int moved = 0;
+    bool stoppedOnSpace = false;
+
+    for (int step = 0; step < totalSteps; ++step) {
+        int nextTile = -1;
+        if (steps > 0) {
+            const Tile& current = board.tileAt(player.tile);
+            nextTile = chooseNextTile(player, current);
+        } else {
+            nextTile = findPreviousTile(player, player.tile);
+        }
+
+        if (nextTile < 0 || nextTile == player.tile) {
+            break;
+        }
+
+        player.tile = nextTile;
+        ++moved;
+
+        const Tile& landed = board.tileAt(player.tile);
+        std::string message = player.name + " moved to " + landed.label;
+        if (board.isStopSpace(landed)) {
+            message = "STOP! " + player.name + " hit " + landed.label;
+        }
+        renderGame(playerIndex, message, "Action card movement...");
+        napms(150);
+
+        if (board.isStopSpace(landed)) {
+            stoppedOnSpace = true;
+            applyTileEffect(playerIndex, landed);
+            break;
+        }
+    }
+
+    std::ostringstream out;
+    out << "Moved " << (steps > 0 ? "forward " : "back ") << moved
+        << (moved == 1 ? " space" : " spaces")
+        << " to " << board.tileAt(player.tile).label << ".";
+    if (stoppedOnSpace) {
+        out << " STOP resolved.";
+    }
+    return out.str();
+}
+
+std::string Game::applyActionEffect(int playerIndex,
+                                    const Tile& tile,
+                                    const ActionEffect& effect,
+                                    int& amountDelta) {
+    Player& player = players[playerIndex];
+    amountDelta = 0;
+
     PaymentResult payment;
     payment.charged = 0;
     payment.loansTaken = 0;
-    std::string result;
 
-    switch (card.effect) {
+    int amount = effect.amount;
+    if (effect.useTileValue) {
+        amount += tile.value * 2000;
+    }
+
+    switch (effect.kind) {
+        case ACTION_NO_EFFECT:
+            return "No payout this time.";
         case ACTION_GAIN_CASH:
-            amount = card.amount + (tile.value * 2000);
             bank.credit(player, amount);
-            result = "Collected $" + std::to_string(amount) + ".";
-            break;
+            amountDelta = amount;
+            return "Collected $" + std::to_string(amount) + ".";
         case ACTION_PAY_CASH:
-            amount = card.amount + (tile.value * 2000);
             payment = bank.charge(player, amount);
-            result = appendLoanText("Paid $" + std::to_string(amount) + ".", payment);
-            amount = -amount;
-            break;
+            amountDelta = -amount;
+            return appendLoanText("Paid $" + std::to_string(amount) + ".", payment);
         case ACTION_GAIN_PER_KID:
-            amount = player.kids * card.amount;
+            amount = player.kids * effect.amount;
             bank.credit(player, amount);
-            result = "Collected $" + std::to_string(amount) + " for family bonuses.";
-            break;
+            amountDelta = amount;
+            return "Collected $" + std::to_string(amount) + " for family bonuses.";
         case ACTION_PAY_PER_KID:
-            amount = player.kids * card.amount;
+            amount = player.kids * effect.amount;
             payment = bank.charge(player, amount);
-            result = appendLoanText("Paid $" + std::to_string(amount) + " for family costs.", payment);
-            amount = -amount;
-            break;
+            amountDelta = -amount;
+            return appendLoanText("Paid $" + std::to_string(amount) + " for family costs.", payment);
         case ACTION_GAIN_SALARY_BONUS:
-            player.salary += card.amount;
-            bank.credit(player, card.amount);
-            amount = card.amount;
-            result = "Salary +$" + std::to_string(card.amount) + " and immediate bonus paid.";
-            break;
+            player.salary += effect.amount;
+            bank.credit(player, effect.amount);
+            amountDelta = effect.amount;
+            return "Salary +$" + std::to_string(effect.amount) + " and immediate bonus paid.";
         case ACTION_BONUS_IF_MARRIED:
             if (player.married) {
-                amount = card.amount;
-                bank.credit(player, amount);
-                result = "Marriage bonus paid $" + std::to_string(amount) + ".";
-            } else {
-                result = "No payout because you are not married yet.";
+                bank.credit(player, effect.amount);
+                amountDelta = effect.amount;
+                return "Marriage bonus paid $" + std::to_string(effect.amount) + ".";
             }
-            break;
+            return "No payout because you are not married yet.";
+        case ACTION_MOVE_SPACES:
+            return movePlayerByAction(playerIndex, effect.amount);
+        default:
+            return "No effect.";
+    }
+}
+
+int Game::playActionCard(int playerIndex, const Tile& tile) {
+    Player& player = players[playerIndex];
+    ActionCard card;
+    if (!decks.drawActionCard(card)) {
+        showInfoPopup("Action Card", "No action cards are available.");
+        return 0;
     }
 
     addHistory(player.name + " drew " + card.title);
 
+    int amount = 0;
+    int rollValue = 0;
+    std::string branchText;
+    std::string result;
+
+    if (actionCardUsesRoll(card)) {
+        rollValue = rollSpinner(card.title, "Hold SPACE to spin this card");
+        addHistory(player.name + " rolled " + std::to_string(rollValue));
+
+        const ActionRollOutcome* outcome = findMatchingRollOutcome(card, rollValue);
+        if (outcome != 0) {
+            branchText = outcome->text.empty()
+                ? describeRollCondition(outcome->condition)
+                : outcome->text;
+            result = applyActionEffect(playerIndex, tile, outcome->effect, amount);
+        } else {
+            branchText = "No matching branch";
+            result = "No effect.";
+        }
+    } else {
+        result = applyActionEffect(playerIndex, tile, card.effect, amount);
+    }
+
+    if (card.keepAfterUse) {
+        player.actionCards.push_back(card.title);
+    }
+    decks.resolveActionCard(card, card.keepAfterUse);
+    if (branchText.empty()) {
+        addHistory(player.name + " result: " + result);
+    } else {
+        addHistory(player.name + " result: " + branchText + " -> " + result);
+    }
+
     int h, w;
     getmaxyx(stdscr, h, w);
-    WINDOW* popup = newwin(10, 54, (h - 10) / 2, (w - 54) / 2);
+    WINDOW* popup = newwin(12, 64, (h - 12) / 2, (w - 64) / 2);
     applyWindowBg(popup);
     werase(popup);
     box(popup, 0, 0);
     mvwprintw(popup, 1, 2, "ACTION CARD");
     mvwprintw(popup, 2, 2, "%s", card.title.c_str());
     mvwprintw(popup, 4, 2, "%s", card.description.c_str());
-    mvwprintw(popup, 5, 2, "%s", result.c_str());
-    mvwprintw(popup, 6, 2, "Cash now: $%d  Loans: %d", player.cash, player.loans);
-    mvwprintw(popup, 8, 2, "Press ENTER");
+    if (rollValue > 0) {
+        mvwprintw(popup, 5, 2, "Rolled: %d", rollValue);
+    }
+    if (!branchText.empty()) {
+        mvwprintw(popup, 6, 2, "Branch: %s", branchText.c_str());
+    }
+    mvwprintw(popup, 7, 2, "Result: %s", result.c_str());
+    mvwprintw(popup, 8, 2, "%s", card.keepAfterUse ? "Kept for endgame scoring." : "Discarded after use.");
+    mvwprintw(popup, 9, 2, "Cash now: $%d  Loans: %d", player.cash, player.loans);
+    mvwprintw(popup, 10, 2, "Press ENTER");
     wrefresh(popup);
 
     int ch;
@@ -586,14 +733,22 @@ int Game::playActionCard(const Tile& tile, Player& player) {
 
 void Game::chooseCareer(Player& player, bool requiresDegree) {
     std::vector<CareerCard> choices = decks.drawCareerChoices(requiresDegree, 2);
-    if (choices.size() < 2) {
+    if (choices.empty()) {
+        showInfoPopup("Career Deck", "No career cards are available.");
         return;
     }
 
     std::vector<std::string> lines;
-    lines.push_back("- " + choices[0].title + " ($" + std::to_string(choices[0].salary) + ")");
-    lines.push_back("- " + choices[1].title + " ($" + std::to_string(choices[1].salary) + ")");
-    int choice = showBranchPopup(requiresDegree ? "Choose a college career" : "Choose a career", lines, 'A', 'B');
+    for (size_t i = 0; i < choices.size(); ++i) {
+        lines.push_back("- " + choices[i].title + " ($" + std::to_string(choices[i].salary) + ")");
+    }
+
+    int choice = 0;
+    if (choices.size() > 1) {
+        choice = showBranchPopup(requiresDegree ? "Choose a college career" : "Choose a career", lines, 'A', 'B');
+    }
+
+    decks.resolveCareerChoices(requiresDegree, choices, choice);
 
     player.job = choices[choice].title;
     player.salary = choices[choice].salary;
@@ -737,7 +892,11 @@ void Game::buyHouse(Player& player) {
         return;
     }
 
-    HouseCard house = decks.drawHouseCard();
+    HouseCard house;
+    if (!decks.drawHouseCard(house)) {
+        showInfoPopup("House Deck", "No house cards are available.");
+        return;
+    }
     PaymentResult payment = bank.charge(player, house.cost);
     player.hasHouse = true;
     player.houseName = house.title;
@@ -751,8 +910,8 @@ void Game::buyHouse(Player& player) {
 }
 
 void Game::assignInvestment(Player& player) {
-    InvestCard card = decks.drawInvestCard();
-    if (card.number <= 0) {
+    InvestCard card;
+    if (!decks.drawInvestCard(card) || card.number <= 0) {
         return;
     }
 
@@ -803,8 +962,8 @@ void Game::maybeAwardPetCard(Player& player, const std::string& reason) {
         return;
     }
 
-    PetCard pet = decks.drawPetCard();
-    if (pet.title.empty()) {
+    PetCard pet;
+    if (!decks.drawPetCard(pet) || pet.title.empty()) {
         return;
     }
 
@@ -823,7 +982,7 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
             addHistory(player.name + " started the journey");
             break;
         case TILE_BLACK:
-            playActionCard(tile, player);
+            playActionCard(playerIndex, tile);
             return;
         case TILE_COLLEGE: {
             PaymentResult payment = bank.charge(player, 100000);

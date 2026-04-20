@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ncurses.h>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -9,11 +10,13 @@
 #include "cards.hpp"
 #include "history.hpp"
 #include "player.hpp"
+#include "random_service.hpp"
 #include "rules.hpp"
 
 class Game {
 public:
     Game();
+    explicit Game(std::uint32_t seed);
     ~Game();
 
     bool run();
@@ -33,6 +36,7 @@ private:
     Board board;
     std::vector<Player> players;
     RuleSet rules;
+    RandomService rng;
     DeckManager decks;
     Bank bank;
     ActionHistory history;
@@ -66,8 +70,14 @@ private:
                         const std::vector<std::string>& lines,
                         char a,
                         char b);
-    int playActionCard(const Tile& tile, Player& player);
+    int playActionCard(int playerIndex, const Tile& tile);
     void applyTileEffect(int playerIndex, const Tile& tile);
+    int findPreviousTile(const Player& player, int tileId) const;
+    std::string movePlayerByAction(int playerIndex, int steps);
+    std::string applyActionEffect(int playerIndex,
+                                  const Tile& tile,
+                                  const ActionEffect& effect,
+                                  int& amountDelta);
     void chooseCareer(Player& player, bool requiresDegree);
     void resolveFamilyStop(Player& player);
     void resolveNightSchool(Player& player);

@@ -1,160 +1,565 @@
 #include "cards.hpp"
 
-#include <algorithm>
-#include <ctime>
+#include <set>
+#include <vector>
 
 namespace {
 template <typename T>
-void fillDeck(std::vector<T>& deck,
-              const std::vector<T>& prototypes,
-              int desiredCount,
-              std::mt19937& rng) {
-    deck.clear();
+std::vector<T> expandDeck(const std::vector<T>& prototypes, int desiredCount) {
+    std::vector<T> cards;
     if (desiredCount <= 0 || prototypes.empty()) {
-        return;
+        return cards;
     }
 
-    while (static_cast<int>(deck.size()) < desiredCount) {
-        for (size_t i = 0; i < prototypes.size() && static_cast<int>(deck.size()) < desiredCount; ++i) {
-            deck.push_back(prototypes[i]);
-        }
+    cards.reserve(desiredCount);
+    std::vector<int> instanceCounts(prototypes.size(), 0);
+
+    for (int i = 0; i < desiredCount; ++i) {
+        const std::size_t prototypeIndex = static_cast<std::size_t>(i % prototypes.size());
+        T card = prototypes[prototypeIndex];
+        ++instanceCounts[prototypeIndex];
+        card.id += "-" + std::to_string(instanceCounts[prototypeIndex]);
+        cards.push_back(card);
     }
-    std::shuffle(deck.begin(), deck.end(), rng);
+    return cards;
 }
 
 template <typename T>
-T drawNext(std::vector<T>& deck, size_t& index, std::mt19937& rng) {
-    if (deck.empty()) {
-        return T();
+std::vector<std::string> titlesFromPeek(const Deck<T>& deck, int count) {
+    std::vector<std::string> titles;
+    if (count <= 0) {
+        return titles;
     }
-    if (index >= deck.size()) {
-        std::shuffle(deck.begin(), deck.end(), rng);
-        index = 0;
+
+    const std::vector<T> cards = deck.peek(static_cast<std::size_t>(count));
+    titles.reserve(cards.size());
+    for (std::size_t i = 0; i < cards.size(); ++i) {
+        titles.push_back(cards[i].title + " [" + cards[i].id + "]");
     }
-    return deck[index++];
+    return titles;
+}
+
+ActionEffect makeActionEffect(ActionEffectKind kind, int amount, bool useTileValue) {
+    ActionEffect effect;
+    effect.kind = kind;
+    effect.amount = amount;
+    effect.useTileValue = useTileValue;
+    return effect;
+}
+
+RollCondition makeAnyCondition() {
+    RollCondition condition;
+    condition.kind = ROLL_ANY;
+    condition.minValue = 0;
+    condition.maxValue = 0;
+    condition.exactValue = 0;
+    return condition;
+}
+
+RollCondition makeOddCondition() {
+    RollCondition condition = makeAnyCondition();
+    condition.kind = ROLL_ODD;
+    return condition;
+}
+
+RollCondition makeEvenCondition() {
+    RollCondition condition = makeAnyCondition();
+    condition.kind = ROLL_EVEN;
+    return condition;
+}
+
+RollCondition makeRangeCondition(int minValue, int maxValue) {
+    RollCondition condition = makeAnyCondition();
+    condition.kind = ROLL_RANGE;
+    condition.minValue = minValue;
+    condition.maxValue = maxValue;
+    return condition;
+}
+
+RollCondition makeExactCondition(int exactValue) {
+    RollCondition condition = makeAnyCondition();
+    condition.kind = ROLL_EXACT;
+    condition.exactValue = exactValue;
+    return condition;
+}
+
+ActionRollOutcome makeRollOutcome(const RollCondition& condition,
+                                  const ActionEffect& effect,
+                                  const std::string& text) {
+    ActionRollOutcome outcome;
+    outcome.condition = condition;
+    outcome.effect = effect;
+    outcome.text = text;
+    return outcome;
+}
+
+ActionCard makeActionCard(const std::string& id,
+                          const std::string& title,
+                          const std::string& description,
+                          const ActionEffect& effect,
+                          bool keepAfterUse) {
+    ActionCard card;
+    card.id = id;
+    card.title = title;
+    card.category = CARD_ACTION;
+    card.description = description;
+    card.effect = effect;
+    card.keepAfterUse = keepAfterUse;
+    return card;
+}
+
+ActionCard makeRollActionCard(const std::string& id,
+                              const std::string& title,
+                              const std::string& description,
+                              const std::vector<ActionRollOutcome>& outcomes,
+                              bool keepAfterUse) {
+    ActionCard card = makeActionCard(id, title, description, makeActionEffect(ACTION_NO_EFFECT, 0, false), keepAfterUse);
+    card.rollOutcomes = outcomes;
+    return card;
+}
+
+std::vector<ActionCard> actionPrototypes() {
+    std::vector<ActionCard> cards;
+    cards.push_back(makeActionCard("action-tax-refund", "Tax Refund",
+                                   "Collect a surprise refund from the bank.",
+                                   makeActionEffect(ACTION_GAIN_CASH, 25000, true), true));
+    cards.push_back(makeActionCard("action-car-trouble", "Car Trouble",
+                                   "Pay for a major repair bill.",
+                                   makeActionEffect(ACTION_PAY_CASH, 20000, true), false));
+    cards.push_back(makeActionCard("action-family-picnic", "Family Picnic",
+                                   "Collect $10K per child for the photo shoot.",
+                                   makeActionEffect(ACTION_GAIN_PER_KID, 10000, false), true));
+    cards.push_back(makeActionCard("action-school-supplies", "School Supplies",
+                                   "Pay $8K per child for school supplies.",
+                                   makeActionEffect(ACTION_PAY_PER_KID, 8000, false), false));
+    cards.push_back(makeActionCard("action-side-hustle", "Side Hustle",
+                                   "Your side gig boosts your salary by $10K.",
+                                   makeActionEffect(ACTION_GAIN_SALARY_BONUS, 10000, false), true));
+    cards.push_back(makeActionCard("action-anniversary-bonus", "Anniversary Bonus",
+                                   "If married, collect $30K from the bank.",
+                                   makeActionEffect(ACTION_BONUS_IF_MARRIED, 30000, false), true));
+    cards.push_back(makeActionCard("action-lucky-day", "Lucky Day",
+                                   "Collect a sudden windfall.",
+                                   makeActionEffect(ACTION_GAIN_CASH, 40000, true), true));
+    cards.push_back(makeActionCard("action-unexpected-bill", "Unexpected Bill",
+                                   "Pay an emergency household expense.",
+                                   makeActionEffect(ACTION_PAY_CASH, 30000, true), false));
+
+    std::vector<ActionRollOutcome> casinoNight;
+    casinoNight.push_back(makeRollOutcome(makeOddCondition(),
+                                          makeActionEffect(ACTION_GAIN_CASH, 50000, false),
+                                          "Odd roll"));
+    casinoNight.push_back(makeRollOutcome(makeEvenCondition(),
+                                          makeActionEffect(ACTION_PAY_CASH, 50000, false),
+                                          "Even roll"));
+    cards.push_back(makeRollActionCard("action-casino-night", "Casino Night",
+                                       "Spin the wheel. Odd collects $50K, even pays $50K.",
+                                       casinoNight, false));
+
+    std::vector<ActionRollOutcome> riskyMove;
+    riskyMove.push_back(makeRollOutcome(makeRangeCondition(1, 5),
+                                        makeActionEffect(ACTION_MOVE_SPACES, -2, false),
+                                        "Roll 1-5"));
+    riskyMove.push_back(makeRollOutcome(makeRangeCondition(6, 10),
+                                        makeActionEffect(ACTION_MOVE_SPACES, 2, false),
+                                        "Roll 6-10"));
+    cards.push_back(makeRollActionCard("action-risky-move", "Risky Move",
+                                       "Spin the wheel. Low rolls move back 2 spaces, high rolls move forward 2.",
+                                       riskyMove, false));
+
+    std::vector<ActionRollOutcome> jackpot;
+    jackpot.push_back(makeRollOutcome(makeExactCondition(10),
+                                      makeActionEffect(ACTION_GAIN_CASH, 200000, false),
+                                      "Exact 10"));
+    jackpot.push_back(makeRollOutcome(makeRangeCondition(6, 9),
+                                      makeActionEffect(ACTION_GAIN_CASH, 100000, false),
+                                      "Roll 6-9"));
+    jackpot.push_back(makeRollOutcome(makeAnyCondition(),
+                                      makeActionEffect(ACTION_NO_EFFECT, 0, false),
+                                      "Roll 1-5"));
+    cards.push_back(makeRollActionCard("action-jackpot", "Jackpot",
+                                       "10 pays $200K, 6-9 pays $100K, and 1-5 pays nothing.",
+                                       jackpot, true));
+
+    std::vector<ActionRollOutcome> trafficTrouble;
+    trafficTrouble.push_back(makeRollOutcome(makeOddCondition(),
+                                             makeActionEffect(ACTION_PAY_CASH, 50000, false),
+                                             "Odd roll"));
+    trafficTrouble.push_back(makeRollOutcome(makeEvenCondition(),
+                                             makeActionEffect(ACTION_NO_EFFECT, 0, false),
+                                             "Even roll"));
+    cards.push_back(makeRollActionCard("action-traffic-trouble", "Traffic Trouble",
+                                       "Odd rolls pay $50K in delays. Even rolls escape the jam.",
+                                       trafficTrouble, false));
+    return cards;
+}
+
+std::vector<CareerCard> collegeCareerPrototypes() {
+    std::vector<CareerCard> cards;
+    cards.push_back({"career-doctor", "Doctor", CARD_CAREER,
+                     "Long degree path, strong salary.",
+                     80000, true, true});
+    cards.push_back({"career-architect", "Architect", CARD_CAREER,
+                     "Design work with steady pay.",
+                     70000, true, true});
+    cards.push_back({"career-scientist", "Scientist", CARD_CAREER,
+                     "Research role with good growth.",
+                     75000, true, true});
+    cards.push_back({"career-engineer", "Engineer", CARD_CAREER,
+                     "Problem solving career with reliable income.",
+                     72000, true, true});
+    cards.push_back({"career-professor", "Professor", CARD_CAREER,
+                     "Academic path with good pay.",
+                     68000, true, true});
+    return cards;
+}
+
+std::vector<CareerCard> careerPrototypes() {
+    std::vector<CareerCard> cards;
+    cards.push_back({"career-chef", "Chef", CARD_CAREER,
+                     "Fast-paced kitchen career.",
+                     42000, false, true});
+    cards.push_back({"career-photographer", "Photographer", CARD_CAREER,
+                     "Creative work on the go.",
+                     38000, false, true});
+    cards.push_back({"career-mechanic", "Mechanic", CARD_CAREER,
+                     "Hands-on technical career.",
+                     43000, false, true});
+    cards.push_back({"career-sales-rep", "Sales Rep", CARD_CAREER,
+                     "People-first role with commissions.",
+                     41000, false, true});
+    cards.push_back({"career-developer", "Developer", CARD_CAREER,
+                     "Technical work with steady income.",
+                     46000, false, true});
+    return cards;
+}
+
+std::vector<HouseCard> housePrototypes() {
+    std::vector<HouseCard> cards;
+    cards.push_back({"house-lake-cabin", "Lake Cabin", CARD_HOUSE,
+                     "Quiet retreat by the water.",
+                     50000, 90000, true});
+    cards.push_back({"house-townhouse", "Townhouse", CARD_HOUSE,
+                     "Compact city home with good resale value.",
+                     60000, 95000, true});
+    cards.push_back({"house-hilltop-villa", "Hilltop Villa", CARD_HOUSE,
+                     "Big views and a higher buy-in.",
+                     80000, 130000, true});
+    cards.push_back({"house-starter-home", "Starter Home", CARD_HOUSE,
+                     "Affordable first house.",
+                     45000, 75000, true});
+    cards.push_back({"house-beach-house", "Beach House", CARD_HOUSE,
+                     "Premium location with a big upside.",
+                     90000, 140000, true});
+    return cards;
+}
+
+std::vector<InvestCard> investPrototypes(const RuleSet& rules) {
+    std::vector<InvestCard> cards;
+    cards.push_back({"invest-3", "Invest on 3", CARD_INVEST,
+                     "Collect when any player spins a 3.",
+                     3, rules.investmentMatchPayout, true});
+    cards.push_back({"invest-5", "Invest on 5", CARD_INVEST,
+                     "Collect when any player spins a 5.",
+                     5, rules.investmentMatchPayout, true});
+    cards.push_back({"invest-7", "Invest on 7", CARD_INVEST,
+                     "Collect when any player spins a 7.",
+                     7, rules.investmentMatchPayout, true});
+    cards.push_back({"invest-9", "Invest on 9", CARD_INVEST,
+                     "Collect when any player spins a 9.",
+                     9, rules.investmentMatchPayout, true});
+    return cards;
+}
+
+std::vector<PetCard> petPrototypes() {
+    std::vector<PetCard> cards;
+    cards.push_back({"pet-dog", "Dog", CARD_PET,
+                     "A loyal family dog joins the car.",
+                     100000, true});
+    cards.push_back({"pet-cat", "Cat", CARD_PET,
+                     "A calm cat settles into the household.",
+                     100000, true});
+    cards.push_back({"pet-rabbit", "Rabbit", CARD_PET,
+                     "A tiny pet with a big personality.",
+                     100000, true});
+    cards.push_back({"pet-parrot", "Parrot", CARD_PET,
+                     "A chatty bird becomes part of the trip.",
+                     100000, true});
+    return cards;
+}
+
+std::vector<std::string> sampleActionDraws(const RuleSet& rules,
+                                           RandomService& random,
+                                           int drawCount,
+                                           std::vector<std::string>* ids) {
+    DeckManager manager(rules, random);
+    std::vector<std::string> sample;
+    ActionCard card;
+
+    for (int i = 0; i < drawCount; ++i) {
+        if (!manager.drawActionCard(card)) {
+            break;
+        }
+        sample.push_back(card.title + " [" + card.id + "]");
+        if (ids != 0) {
+            ids->push_back(card.id);
+        }
+    }
+
+    return sample;
+}
+
+std::vector<int> sampleRolls(RandomService& random, int rollCount) {
+    std::vector<int> rolls;
+    if (rollCount <= 0) {
+        return rolls;
+    }
+
+    rolls.reserve(static_cast<std::size_t>(rollCount));
+    for (int i = 0; i < rollCount; ++i) {
+        rolls.push_back(random.roll10());
+    }
+    return rolls;
 }
 }
 
-DeckManager::DeckManager(const RuleSet& rules)
+bool actionCardUsesRoll(const ActionCard& card) {
+    return !card.rollOutcomes.empty();
+}
+
+bool matchesRollCondition(const RollCondition& condition, int roll) {
+    switch (condition.kind) {
+        case ROLL_ANY:
+            return true;
+        case ROLL_ODD:
+            return RandomService::isOdd(roll);
+        case ROLL_EVEN:
+            return RandomService::isEven(roll);
+        case ROLL_RANGE:
+            return RandomService::inRange(roll, condition.minValue, condition.maxValue);
+        case ROLL_EXACT:
+            return roll == condition.exactValue;
+        default:
+            return false;
+    }
+}
+
+const ActionRollOutcome* findMatchingRollOutcome(const ActionCard& card, int roll) {
+    for (std::size_t i = 0; i < card.rollOutcomes.size(); ++i) {
+        if (matchesRollCondition(card.rollOutcomes[i].condition, roll)) {
+            return &card.rollOutcomes[i];
+        }
+    }
+    return 0;
+}
+
+std::string describeRollCondition(const RollCondition& condition) {
+    switch (condition.kind) {
+        case ROLL_ANY:
+            return "Default";
+        case ROLL_ODD:
+            return "Odd roll";
+        case ROLL_EVEN:
+            return "Even roll";
+        case ROLL_RANGE:
+            return "Roll " + std::to_string(condition.minValue) + "-" + std::to_string(condition.maxValue);
+        case ROLL_EXACT:
+            return "Roll " + std::to_string(condition.exactValue);
+        default:
+            return "Unknown roll";
+    }
+}
+
+DeckManager::DeckManager(const RuleSet& rules, RandomService& randomService)
     : ruleset(rules),
-      rng(static_cast<unsigned>(std::time(nullptr))),
-      actionIndex(0),
-      collegeCareerIndex(0),
-      careerIndex(0),
-      houseIndex(0),
-      investIndex(0),
-      petIndex(0) {
-    initDecks();
+      random(randomService),
+      actionDeck(randomService),
+      collegeCareerDeck(randomService),
+      careerDeck(randomService),
+      houseDeck(randomService),
+      investDeck(randomService),
+      petDeck(randomService) {
+    initDecks(true);
 }
 
-void DeckManager::reset(const RuleSet& rules) {
+void DeckManager::reset(const RuleSet& rules, bool reshuffle) {
     ruleset = rules;
-    actionIndex = 0;
-    collegeCareerIndex = 0;
-    careerIndex = 0;
-    houseIndex = 0;
-    investIndex = 0;
-    petIndex = 0;
-    initDecks();
+    initDecks(reshuffle);
 }
 
 const RuleSet& DeckManager::rules() const {
     return ruleset;
 }
 
-ActionCard DeckManager::drawActionCard() {
-    return drawNext(actionDeck, actionIndex, rng);
+bool DeckManager::drawActionCard(ActionCard& card) {
+    return actionDeck.draw(card);
+}
+
+void DeckManager::resolveActionCard(const ActionCard& card, bool keepCard) {
+    if (keepCard) {
+        return;
+    }
+    actionDeck.discard(card);
 }
 
 std::vector<CareerCard> DeckManager::drawCareerChoices(bool requiresDegree, int count) {
     std::vector<CareerCard> choices;
-    choices.reserve(count);
+    if (count <= 0) {
+        return choices;
+    }
 
-    std::vector<CareerCard>& deck = requiresDegree ? collegeCareerDeck : careerDeck;
-    size_t& index = requiresDegree ? collegeCareerIndex : careerIndex;
+    choices.reserve(static_cast<std::size_t>(count));
+    Deck<CareerCard>& deck = requiresDegree ? collegeCareerDeck : careerDeck;
+    CareerCard card;
 
     for (int i = 0; i < count; ++i) {
-        choices.push_back(drawNext(deck, index, rng));
+        if (!deck.draw(card)) {
+            break;
+        }
+        choices.push_back(card);
     }
     return choices;
 }
 
-HouseCard DeckManager::drawHouseCard() {
-    return drawNext(houseDeck, houseIndex, rng);
+void DeckManager::resolveCareerChoices(bool requiresDegree,
+                                       const std::vector<CareerCard>& choices,
+                                       int keptIndex) {
+    Deck<CareerCard>& deck = requiresDegree ? collegeCareerDeck : careerDeck;
+    for (std::size_t i = 0; i < choices.size(); ++i) {
+        if (static_cast<int>(i) == keptIndex) {
+            continue;
+        }
+        deck.discard(choices[i]);
+    }
 }
 
-InvestCard DeckManager::drawInvestCard() {
-    return drawNext(investDeck, investIndex, rng);
+bool DeckManager::drawHouseCard(HouseCard& card) {
+    return houseDeck.draw(card);
 }
 
-PetCard DeckManager::drawPetCard() {
-    return drawNext(petDeck, petIndex, rng);
+bool DeckManager::drawInvestCard(InvestCard& card) {
+    return investDeck.draw(card);
 }
 
-void DeckManager::initDecks() {
-    initActionDeck();
-    initCareerDecks();
-    initHouseDeck();
-    initInvestDeck();
-    initPetDeck();
+bool DeckManager::drawPetCard(PetCard& card) {
+    return petDeck.draw(card);
 }
 
-void DeckManager::initActionDeck() {
-    std::vector<ActionCard> prototypes;
-    prototypes.push_back({"Tax Refund", "Collect a surprise refund from the bank.", ACTION_GAIN_CASH, 25000});
-    prototypes.push_back({"Car Trouble", "Pay for a major repair bill.", ACTION_PAY_CASH, 20000});
-    prototypes.push_back({"Family Picnic", "Collect $10K per child for the photo shoot.", ACTION_GAIN_PER_KID, 10000});
-    prototypes.push_back({"School Supplies", "Pay $8K per child.", ACTION_PAY_PER_KID, 8000});
-    prototypes.push_back({"Side Hustle", "Your side gig boosts your salary by $10K.", ACTION_GAIN_SALARY_BONUS, 10000});
-    prototypes.push_back({"Anniversary Bonus", "If married, collect $30K.", ACTION_BONUS_IF_MARRIED, 30000});
-    prototypes.push_back({"Lucky Day", "Collect a windfall from the bank.", ACTION_GAIN_CASH, 40000});
-    prototypes.push_back({"Unexpected Bill", "Pay an emergency expense.", ACTION_PAY_CASH, 30000});
-    fillDeck(actionDeck, prototypes, ruleset.components.actionCards, rng);
+std::vector<std::string> DeckManager::debugPeekTitles(CardCategory category, int count) const {
+    switch (category) {
+        case CARD_ACTION:
+            return titlesFromPeek(actionDeck, count);
+        case CARD_CAREER: {
+            std::vector<std::string> titles = titlesFromPeek(collegeCareerDeck, count);
+            if (static_cast<int>(titles.size()) < count) {
+                const std::vector<std::string> moreTitles =
+                    titlesFromPeek(careerDeck, count - static_cast<int>(titles.size()));
+                titles.insert(titles.end(), moreTitles.begin(), moreTitles.end());
+            }
+            return titles;
+        }
+        case CARD_HOUSE:
+            return titlesFromPeek(houseDeck, count);
+        case CARD_INVEST:
+            return titlesFromPeek(investDeck, count);
+        case CARD_PET:
+            return titlesFromPeek(petDeck, count);
+        default:
+            return std::vector<std::string>();
+    }
 }
 
-void DeckManager::initCareerDecks() {
-    std::vector<CareerCard> collegePrototypes;
-    collegePrototypes.push_back({"Doctor", "Long degree path, strong salary.", 80000, true});
-    collegePrototypes.push_back({"Architect", "Design work with steady pay.", 70000, true});
-    collegePrototypes.push_back({"Scientist", "Research role with growth.", 75000, true});
-    collegePrototypes.push_back({"Engineer", "Problem solving career.", 72000, true});
-    collegePrototypes.push_back({"Professor", "Academic path with good pay.", 68000, true});
-
-    std::vector<CareerCard> careerPrototypes;
-    careerPrototypes.push_back({"Chef", "Fast-paced kitchen career.", 42000, false});
-    careerPrototypes.push_back({"Photographer", "Creative work on the go.", 38000, false});
-    careerPrototypes.push_back({"Mechanic", "Hands-on technical career.", 43000, false});
-    careerPrototypes.push_back({"Sales Rep", "People-first role with commissions.", 41000, false});
-    careerPrototypes.push_back({"Developer", "Technical career with steady income.", 46000, false});
-
-    fillDeck(collegeCareerDeck, collegePrototypes, ruleset.components.collegeCareerCards, rng);
-    fillDeck(careerDeck, careerPrototypes, ruleset.components.careerCards, rng);
+void DeckManager::initDecks(bool reshuffle) {
+    initActionDeck(reshuffle);
+    initCareerDecks(reshuffle);
+    initHouseDeck(reshuffle);
+    initInvestDeck(reshuffle);
+    initPetDeck(reshuffle);
 }
 
-void DeckManager::initHouseDeck() {
-    std::vector<HouseCard> prototypes;
-    prototypes.push_back({"Lake Cabin", 50000, 90000});
-    prototypes.push_back({"Townhouse", 60000, 95000});
-    prototypes.push_back({"Hilltop Villa", 80000, 130000});
-    prototypes.push_back({"Starter Home", 45000, 75000});
-    prototypes.push_back({"Beach House", 90000, 140000});
-    fillDeck(houseDeck, prototypes, ruleset.components.houseCards, rng);
+void DeckManager::initActionDeck(bool reshuffle) {
+    actionDeck.reset(expandDeck(actionPrototypes(), ruleset.components.actionCards), reshuffle);
 }
 
-void DeckManager::initInvestDeck() {
-    std::vector<InvestCard> prototypes;
-    prototypes.push_back({"Invest on 3", 3, ruleset.investmentMatchPayout});
-    prototypes.push_back({"Invest on 5", 5, ruleset.investmentMatchPayout});
-    prototypes.push_back({"Invest on 7", 7, ruleset.investmentMatchPayout});
-    prototypes.push_back({"Invest on 9", 9, ruleset.investmentMatchPayout});
-    fillDeck(investDeck, prototypes, ruleset.components.investCards, rng);
+void DeckManager::initCareerDecks(bool reshuffle) {
+    collegeCareerDeck.reset(
+        expandDeck(collegeCareerPrototypes(), ruleset.components.collegeCareerCards),
+        reshuffle);
+    careerDeck.reset(
+        expandDeck(careerPrototypes(), ruleset.components.careerCards),
+        reshuffle);
 }
 
-void DeckManager::initPetDeck() {
-    std::vector<PetCard> prototypes;
-    prototypes.push_back({"Dog", "A loyal family dog joins the car.", 100000});
-    prototypes.push_back({"Cat", "A calm cat settles into the household.", 100000});
-    prototypes.push_back({"Rabbit", "A tiny pet with a big personality.", 100000});
-    prototypes.push_back({"Parrot", "A chatty bird becomes part of the trip.", 100000});
-    fillDeck(petDeck, prototypes, ruleset.components.petCards, rng);
+void DeckManager::initHouseDeck(bool reshuffle) {
+    houseDeck.reset(expandDeck(housePrototypes(), ruleset.components.houseCards), reshuffle);
+}
+
+void DeckManager::initInvestDeck(bool reshuffle) {
+    investDeck.reset(expandDeck(investPrototypes(ruleset), ruleset.components.investCards), reshuffle);
+}
+
+void DeckManager::initPetDeck(bool reshuffle) {
+    petDeck.reset(expandDeck(petPrototypes(), ruleset.components.petCards), reshuffle);
+}
+
+DeckValidationReport buildDeckValidationReport(const RuleSet& rules,
+                                               std::uint32_t fixedSeed,
+                                               int drawsPerSample) {
+    if (drawsPerSample < 0) {
+        drawsPerSample = 0;
+    }
+
+    DeckValidationReport report;
+
+    RandomService randomA;
+    RandomService randomB;
+    RandomService fixedA(fixedSeed);
+    RandomService fixedB(fixedSeed);
+    std::vector<std::string> fixedIds;
+
+    report.randomSeedSample = sampleActionDraws(rules, randomA, drawsPerSample, 0);
+    report.alternateRandomSeedSample = sampleActionDraws(rules, randomB, drawsPerSample, 0);
+    report.fixedSeedSampleA = sampleActionDraws(rules, fixedA, drawsPerSample, &fixedIds);
+    report.fixedSeedSampleB = sampleActionDraws(rules, fixedB, drawsPerSample, 0);
+    report.fixedSeedDeterministic = report.fixedSeedSampleA == report.fixedSeedSampleB;
+
+    std::set<std::string> uniqueIds(fixedIds.begin(), fixedIds.end());
+    report.fixedSeedHasNoDuplicatesBeforeReshuffle = uniqueIds.size() == fixedIds.size();
+    return report;
+}
+
+ActionRollValidationReport buildActionRollValidationReport(std::uint32_t fixedSeed,
+                                                           int rollCount) {
+    if (rollCount < 0) {
+        rollCount = 0;
+    }
+
+    ActionRollValidationReport report;
+    RandomService fixedA(fixedSeed);
+    RandomService fixedB(fixedSeed);
+
+    report.fixedSeedRollsA = sampleRolls(fixedA, rollCount);
+    report.fixedSeedRollsB = sampleRolls(fixedB, rollCount);
+    report.fixedSeedDeterministic = report.fixedSeedRollsA == report.fixedSeedRollsB;
+
+    report.oddEvenSupported =
+        matchesRollCondition(makeOddCondition(), 3) &&
+        !matchesRollCondition(makeOddCondition(), 4) &&
+        matchesRollCondition(makeEvenCondition(), 4) &&
+        !matchesRollCondition(makeEvenCondition(), 3);
+
+    report.rangeSupported =
+        matchesRollCondition(makeRangeCondition(1, 5), 1) &&
+        matchesRollCondition(makeRangeCondition(1, 5), 5) &&
+        !matchesRollCondition(makeRangeCondition(1, 5), 6);
+
+    report.exactSupported =
+        matchesRollCondition(makeExactCondition(10), 10) &&
+        !matchesRollCondition(makeExactCondition(10), 9);
+
+    report.fallbackSupported =
+        matchesRollCondition(makeAnyCondition(), 1) &&
+        matchesRollCondition(makeAnyCondition(), 10);
+
+    return report;
 }
