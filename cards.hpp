@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <random>
 #include <string>
 #include <vector>
 
@@ -104,25 +103,6 @@ struct PetCard {
     bool keepAfterUse;
 };
 
-struct DeckValidationReport {
-    std::vector<std::string> randomSeedSample;
-    std::vector<std::string> alternateRandomSeedSample;
-    std::vector<std::string> fixedSeedSampleA;
-    std::vector<std::string> fixedSeedSampleB;
-    bool fixedSeedDeterministic;
-    bool fixedSeedHasNoDuplicatesBeforeReshuffle;
-};
-
-struct ActionRollValidationReport {
-    std::vector<int> fixedSeedRollsA;
-    std::vector<int> fixedSeedRollsB;
-    bool fixedSeedDeterministic;
-    bool oddEvenSupported;
-    bool rangeSupported;
-    bool exactSupported;
-    bool fallbackSupported;
-};
-
 class DeckManager {
 public:
     DeckManager(const RuleSet& rules, RandomService& random);
@@ -139,12 +119,9 @@ public:
     bool drawHouseCard(HouseCard& card);
     bool drawInvestCard(InvestCard& card);
     bool drawPetCard(PetCard& card);
-    std::vector<std::string> debugPeekTitles(CardCategory category, int count) const;
 
 private:
     RuleSet ruleset;
-    RandomService& random;
-
     Deck<ActionCard> actionDeck;
     Deck<CareerCard> collegeCareerDeck;
     Deck<CareerCard> careerDeck;
@@ -160,13 +137,7 @@ private:
     void initPetDeck(bool reshuffle);
 };
 
-DeckValidationReport buildDeckValidationReport(const RuleSet& rules,
-                                              std::uint32_t fixedSeed,
-                                              int drawsPerSample = 5);
-
 bool actionCardUsesRoll(const ActionCard& card);
 bool matchesRollCondition(const RollCondition& condition, int roll);
 const ActionRollOutcome* findMatchingRollOutcome(const ActionCard& card, int roll);
 std::string describeRollCondition(const RollCondition& condition);
-ActionRollValidationReport buildActionRollValidationReport(std::uint32_t fixedSeed,
-                                                           int rollCount = 5);

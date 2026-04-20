@@ -1,6 +1,5 @@
 #include "cards.hpp"
 
-#include <set>
 #include <vector>
 
 namespace {
@@ -22,21 +21,6 @@ std::vector<T> expandDeck(const std::vector<T>& prototypes, int desiredCount) {
         cards.push_back(card);
     }
     return cards;
-}
-
-template <typename T>
-std::vector<std::string> titlesFromPeek(const Deck<T>& deck, int count) {
-    std::vector<std::string> titles;
-    if (count <= 0) {
-        return titles;
-    }
-
-    const std::vector<T> cards = deck.peek(static_cast<std::size_t>(count));
-    titles.reserve(cards.size());
-    for (std::size_t i = 0; i < cards.size(); ++i) {
-        titles.push_back(cards[i].title + " [" + cards[i].id + "]");
-    }
-    return titles;
 }
 
 ActionEffect makeActionEffect(ActionEffectKind kind, int amount, bool useTileValue) {
@@ -288,39 +272,6 @@ std::vector<PetCard> petPrototypes() {
     return cards;
 }
 
-std::vector<std::string> sampleActionDraws(const RuleSet& rules,
-                                           RandomService& random,
-                                           int drawCount,
-                                           std::vector<std::string>* ids) {
-    DeckManager manager(rules, random);
-    std::vector<std::string> sample;
-    ActionCard card;
-
-    for (int i = 0; i < drawCount; ++i) {
-        if (!manager.drawActionCard(card)) {
-            break;
-        }
-        sample.push_back(card.title + " [" + card.id + "]");
-        if (ids != 0) {
-            ids->push_back(card.id);
-        }
-    }
-
-    return sample;
-}
-
-std::vector<int> sampleRolls(RandomService& random, int rollCount) {
-    std::vector<int> rolls;
-    if (rollCount <= 0) {
-        return rolls;
-    }
-
-    rolls.reserve(static_cast<std::size_t>(rollCount));
-    for (int i = 0; i < rollCount; ++i) {
-        rolls.push_back(random.roll10());
-    }
-    return rolls;
-}
 }
 
 bool actionCardUsesRoll(const ActionCard& card) {
@@ -372,7 +323,6 @@ std::string describeRollCondition(const RollCondition& condition) {
 
 DeckManager::DeckManager(const RuleSet& rules, RandomService& randomService)
     : ruleset(rules),
-      random(randomService),
       actionDeck(randomService),
       collegeCareerDeck(randomService),
       careerDeck(randomService),
@@ -445,30 +395,6 @@ bool DeckManager::drawPetCard(PetCard& card) {
     return petDeck.draw(card);
 }
 
-std::vector<std::string> DeckManager::debugPeekTitles(CardCategory category, int count) const {
-    switch (category) {
-        case CARD_ACTION:
-            return titlesFromPeek(actionDeck, count);
-        case CARD_CAREER: {
-            std::vector<std::string> titles = titlesFromPeek(collegeCareerDeck, count);
-            if (static_cast<int>(titles.size()) < count) {
-                const std::vector<std::string> moreTitles =
-                    titlesFromPeek(careerDeck, count - static_cast<int>(titles.size()));
-                titles.insert(titles.end(), moreTitles.begin(), moreTitles.end());
-            }
-            return titles;
-        }
-        case CARD_HOUSE:
-            return titlesFromPeek(houseDeck, count);
-        case CARD_INVEST:
-            return titlesFromPeek(investDeck, count);
-        case CARD_PET:
-            return titlesFromPeek(petDeck, count);
-        default:
-            return std::vector<std::string>();
-    }
-}
-
 void DeckManager::initDecks(bool reshuffle) {
     initActionDeck(reshuffle);
     initCareerDecks(reshuffle);
@@ -500,66 +426,4 @@ void DeckManager::initInvestDeck(bool reshuffle) {
 
 void DeckManager::initPetDeck(bool reshuffle) {
     petDeck.reset(expandDeck(petPrototypes(), ruleset.components.petCards), reshuffle);
-}
-
-DeckValidationReport buildDeckValidationReport(const RuleSet& rules,
-                                               std::uint32_t fixedSeed,
-                                               int drawsPerSample) {
-    if (drawsPerSample < 0) {
-        drawsPerSample = 0;
-    }
-
-    DeckValidationReport report;
-
-    RandomService randomA;
-    RandomService randomB;
-    RandomService fixedA(fixedSeed);
-    RandomService fixedB(fixedSeed);
-    std::vector<std::string> fixedIds;
-
-    report.randomSeedSample = sampleActionDraws(rules, randomA, drawsPerSample, 0);
-    report.alternateRandomSeedSample = sampleActionDraws(rules, randomB, drawsPerSample, 0);
-    report.fixedSeedSampleA = sampleActionDraws(rules, fixedA, drawsPerSample, &fixedIds);
-    report.fixedSeedSampleB = sampleActionDraws(rules, fixedB, drawsPerSample, 0);
-    report.fixedSeedDeterministic = report.fixedSeedSampleA == report.fixedSeedSampleB;
-
-    std::set<std::string> uniqueIds(fixedIds.begin(), fixedIds.end());
-    report.fixedSeedHasNoDuplicatesBeforeReshuffle = uniqueIds.size() == fixedIds.size();
-    return report;
-}
-
-ActionRollValidationReport buildActionRollValidationReport(std::uint32_t fixedSeed,
-                                                           int rollCount) {
-    if (rollCount < 0) {
-        rollCount = 0;
-    }
-
-    ActionRollValidationReport report;
-    RandomService fixedA(fixedSeed);
-    RandomService fixedB(fixedSeed);
-
-    report.fixedSeedRollsA = sampleRolls(fixedA, rollCount);
-    report.fixedSeedRollsB = sampleRolls(fixedB, rollCount);
-    report.fixedSeedDeterministic = report.fixedSeedRollsA == report.fixedSeedRollsB;
-
-    report.oddEvenSupported =
-        matchesRollCondition(makeOddCondition(), 3) &&
-        !matchesRollCondition(makeOddCondition(), 4) &&
-        matchesRollCondition(makeEvenCondition(), 4) &&
-        !matchesRollCondition(makeEvenCondition(), 3);
-
-    report.rangeSupported =
-        matchesRollCondition(makeRangeCondition(1, 5), 1) &&
-        matchesRollCondition(makeRangeCondition(1, 5), 5) &&
-        !matchesRollCondition(makeRangeCondition(1, 5), 6);
-
-    report.exactSupported =
-        matchesRollCondition(makeExactCondition(10), 10) &&
-        !matchesRollCondition(makeExactCondition(10), 9);
-
-    report.fallbackSupported =
-        matchesRollCondition(makeAnyCondition(), 1) &&
-        matchesRollCondition(makeAnyCondition(), 10);
-
-    return report;
 }
