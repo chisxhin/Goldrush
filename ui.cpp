@@ -137,21 +137,22 @@ void draw_sidebar_ui(WINDOW* panelWin,
     mvwprintw(panelWin, 23, 2, "MODE");
     wattroff(panelWin, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
 
-    if (!players.empty() && currentPlayer >= 0 && currentPlayer < static_cast<int>(players.size())) {
-        const Player& player = players[currentPlayer];
+    int row = 2;
+    for (size_t i = 0; i < players.size(); ++i) {
+        const Player& player = players[i];
+        std::string marker = (static_cast<int>(i) == currentPlayer) ? ">" : " ";
         std::string home = player.retirementHome.empty() ? "--" : player.retirementHome;
         std::string invest = player.investedNumber > 0 ? std::to_string(player.investedNumber) : "-";
 
-        wattron(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
-        mvwprintw(panelWin, 3, 2, "P%d %.12s [%c]", currentPlayer + 1, player.name.c_str(), player.token);
-        wattroff(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
+        wattron(panelWin, COLOR_PAIR(ui_player_color_pair(static_cast<int>(i))) | A_BOLD);
+        mvwprintw(panelWin, row, 2, "%sP%d %.12s [%c]", marker.c_str(), static_cast<int>(i) + 1, player.name.c_str(), player.token);
+        wattroff(panelWin, COLOR_PAIR(ui_player_color_pair(static_cast<int>(i))) | A_BOLD);
 
         wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
-        mvwprintw(panelWin, 5, 2, "$%d L:%d S:%s", player.cash, player.loans, player.married ? "Y" : "N");
-        mvwprintw(panelWin, 6, 2, "K:%d P:%d I:%s", player.kids, static_cast<int>(player.petCards.size()), invest.c_str());
-        mvwprintw(panelWin, 7, 2, "J:%-.18s", player.job.c_str());
-        mvwprintw(panelWin, 8, 2, "Home:%-.12s", home.c_str());
+        mvwprintw(panelWin, row + 1, 2, "$%d L:%d S:%s K:%d P:%d", player.cash, player.loans, player.married ? "Y" : "N", player.kids, static_cast<int>(player.petCards.size()));
+        mvwprintw(panelWin, row + 2, 2, "J:%-.10s I:%s H:%-.8s", player.job.c_str(), invest.c_str(), home.c_str());
         wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
+        row += 3;
     }
 
     wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));

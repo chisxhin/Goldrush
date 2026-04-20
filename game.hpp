@@ -53,11 +53,9 @@ private:
     void waitForEnter(WINDOW* w, int y, int x, const std::string& text) const;
     void applyWindowBg(WINDOW* w) const;
     void addHistory(const std::string& entry);
-    void drawSetupTitle() const;
-    void flashSpinResult(const std::string& title, int value) const;
 
     bool showStartScreen();
-    bool configureCustomRules();
+    void configureCustomRules();
     void showTutorial();
     void showControlsPopup() const;
     void setupRules();
