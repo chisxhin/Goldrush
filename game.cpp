@@ -94,16 +94,20 @@ void Game::destroyWindows() {
 void Game::createWindows() {
     int termH, termW;
     getmaxyx(stdscr, termH, termW);
-    int totalH = TITLE_H + BOARD_H + MSG_H;
+    const int titleHeight = TITLE_H;
+    int totalH = titleHeight + BOARD_H + MSG_H;
     int startY = (termH - totalH) / 2;
     int startX = (termW - TITLE_W) / 2;
     if (startY < 0) startY = 0;
     if (startX < 0) startX = 0;
 
+    clear();
+    refresh();
+
     titleWin = newwin(TITLE_H, TITLE_W, startY, startX);
-    boardWin = newwin(BOARD_H, BOARD_W, startY + TITLE_H, startX);
-    infoWin = newwin(INFO_H, INFO_W, startY + TITLE_H, startX + BOARD_W);
-    msgWin = newwin(MSG_H, MSG_W, startY + TITLE_H + BOARD_H, startX);
+    boardWin = newwin(BOARD_H, BOARD_W, startY + titleHeight, startX);
+    infoWin = newwin(INFO_H, INFO_W, startY + titleHeight, startX + BOARD_W);
+    msgWin = newwin(MSG_H, MSG_W, startY + titleHeight + BOARD_H, startX);
 
     keypad(infoWin, TRUE);
     keypad(msgWin, TRUE);
@@ -122,36 +126,105 @@ void Game::waitForEnter(WINDOW* w, int y, int x, const std::string& text) const 
     } while (ch != '\n' && ch != KEY_ENTER && ch != '\r');
 }
 
+void Game::drawSetupTitle() const {
+    if (!msgWin) {
+        return;
+    }
+
+    const char* lines[] = {
+        "  ________       .__       .___                   .__     ",
+        " /  _____/  ____ |  |    __| _/______ __ __  _____|  |__  ",
+        "/   \\  ___ /  _ \\|  |   / __ |\\_  __ \\  |  \\/  ___/  |  \\ ",
+        "\\    \\_\\  (  <_> )  |__/ /_/ | |  | \\/  |  /\\___ \\|   Y  \\",
+        " \\______  /\\____/|____/\\____ | |__|  |____//____  >___|  /",
+        "        \\/                  \\/                  \\/     \\/ "
+    };
+    const int artW = 60;
+
+    int h, w;
+    getmaxyx(stdscr, h, w);
+    int startY = (h / 2) - 6;
+    int startX = (w - artW) / 2;
+    if (startY < 1) startY = 1;
+    if (startX < 0) startX = 0;
+
+    if (hasColor) {
+        attron(COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
+    }
+    for (int i = 0; i < 6; ++i) {
+        mvprintw(startY + i, startX, "%s", lines[i]);
+    }
+    if (hasColor) {
+        attroff(COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
+        attron(COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+    }
+    mvprintw(startY + 9, (w - 8) / 2, "GOLDRUSH");
+    if (hasColor) {
+        attroff(COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+    }
+    refresh();
+}
+
+void Game::flashSpinResult(const std::string& title, int value) const {
+    const int flashPairs[] = {
+        GOLDRUSH_PLAYER_ONE,
+        GOLDRUSH_PLAYER_TWO,
+        GOLDRUSH_PLAYER_THREE,
+        GOLDRUSH_PLAYER_FOUR
+    };
+
+    for (int flash = 0; flash < 4; ++flash) {
+        werase(msgWin);
+        box(msgWin, 0, 0);
+        mvwprintw(msgWin, 1, 2, "%s", title.c_str());
+
+        int colorPair = flashPairs[flash % 4];
+        if (hasColor) {
+            wattron(msgWin, COLOR_PAIR(colorPair) | A_BOLD | ((flash % 2 == 0) ? A_BLINK : 0));
+        } else if (flash % 2 == 0) {
+            wattron(msgWin, A_REVERSE | A_BOLD);
+        }
+
+        mvwprintw(msgWin, 2, 2, "Spin result: %d!", value);
+
+        if (hasColor) {
+            wattroff(msgWin, COLOR_PAIR(colorPair) | A_BOLD | ((flash % 2 == 0) ? A_BLINK : 0));
+        } else if (flash % 2 == 0) {
+            wattroff(msgWin, A_REVERSE | A_BOLD);
+        }
+
+        wrefresh(msgWin);
+        napms(130);
+    }
+}
+
 bool Game::showStartScreen() {
+    const char* lines[] = {
+        "  ________       .__       .___                   .__     ",
+        " /  _____/  ____ |  |    __| _/______ __ __  _____|  |__  ",
+        "/   \\  ___ /  _ \\|  |   / __ |\\_  __ \\  |  \\/  ___/  |  \\ ",
+        "\\    \\_\\  (  <_> )  |__/ /_/ | |  | \\/  |  /\\___ \\|   Y  \\",
+        " \\______  /\\____/|____/\\____ | |__|  |____//____  >___|  /",
+        "        \\/                  \\/                  \\/     \\/ "
+    };
+    const int artLines = static_cast<int>(sizeof(lines) / sizeof(lines[0]));
+    const int artW = 60;
+    bool choosingMode = false;
+    int highlightedMode = 0;
+
     while (true) {
         int h, w;
         getmaxyx(stdscr, h, w);
         clear();
         if (hasColor) bkgd(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
 
-        const char* lines[] = {
-            "  ________       .__       .___                   .__     ",
-            " /  _____/  ____ |  |    __| _/______ __ __  _____|  |__  ",
-            "/   \\  ___ /  _ \\|  |   / __ |\\_  __ \\  |  \\/  ___/  |  \\ ",
-            "\\    \\_\\  (  <_> )  |__/ /_/ | |  | \\/  |  /\\___ \\|   Y  \\",
-            " \\______  /\\____/|____/\\____ | |__|  |____//____  >___|  /",
-            "        \\/                  \\/                  \\/     \\/ "
-        };
-
-        int artW = 60;
         int startY = (h / 2) - 6;
         int startX = (w - artW) / 2;
         if (startY < 1) startY = 1;
         if (startX < 0) startX = 0;
 
-        if (hasColor) attron(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
-        mvprintw(startY - 1, startX - 4, "***********************************************");
-        mvprintw(startY + 6, startX - 4, "*                                             *");
-        mvprintw(startY + 7, startX - 4, "***********************************************");
-        if (hasColor) attroff(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
-
         if (hasColor) wattron(stdscr, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
-        for (int i = 0; i < 6; ++i) {
+        for (int i = 0; i < artLines; ++i) {
             mvprintw(startY + i, startX, "%s", lines[i]);
         }
         if (hasColor) wattroff(stdscr, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
@@ -161,19 +234,69 @@ bool Game::showStartScreen() {
         if (hasColor) wattroff(stdscr, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
 
         if (hasColor) wattron(stdscr, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
-        mvprintw(startY + 11, (w - 34) / 2, "A Hasbro-style Life Journey");
-        mvprintw(startY + 13, (w - 20) / 2, "S  Start    Q  Quit");
+        if (!choosingMode) {
+            mvprintw(startY + 11, (w - 34) / 2, "A Hasbro-style Life Journey");
+            mvprintw(startY + 13, (w - 20) / 2, "S  Start    Q  Quit");
+        } else {
+            mvprintw(startY + 11, (w - 23) / 2, "ENTER select    Q back");
+            const char* normal = "Normal Mode";
+            const char* custom = "Custom Mode";
+            const char* normalDesc = "Every optional system is enabled for the full game.";
+            const char* customDesc = "Open the rules page and toggle features before starting.";
+            int rowY = startY + 13;
+            int normalX = (w / 2) - 18;
+            int customX = (w / 2) + 4;
+            if (highlightedMode == 0) attron(A_REVERSE);
+            mvprintw(rowY, normalX, "%s", normal);
+            if (highlightedMode == 0) attroff(A_REVERSE);
+            if (highlightedMode == 1) attron(A_REVERSE);
+            mvprintw(rowY, customX, "%s", custom);
+            if (highlightedMode == 1) attroff(A_REVERSE);
+            mvprintw(startY + 15, (w - 56) / 2, "%-56s", highlightedMode == 0 ? normalDesc : customDesc);
+        }
         if (hasColor) wattroff(stdscr, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
         refresh();
 
         int ch = getch();
-        if (ch == 's' || ch == 'S') return true;
-        if (ch == 'q' || ch == 'Q') return false;
+        if (!choosingMode) {
+            if (ch == 's' || ch == 'S') {
+                choosingMode = true;
+                highlightedMode = 0;
+                continue;
+            }
+            if (ch == 'q' || ch == 'Q') return false;
+        } else {
+            if (ch == KEY_LEFT || ch == KEY_UP) {
+                highlightedMode = highlightedMode == 0 ? 1 : 0;
+                continue;
+            }
+            if (ch == KEY_RIGHT || ch == KEY_DOWN) {
+                highlightedMode = highlightedMode == 1 ? 0 : 1;
+                continue;
+            }
+            if (ch == 'q' || ch == 'Q') {
+                choosingMode = false;
+                continue;
+            }
+            if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+                if (highlightedMode == 0) {
+                    rules = makeNormalRules();
+                    return true;
+                }
+
+                rules = makeCustomRules();
+                if (configureCustomRules()) {
+                    return true;
+                }
+                choosingMode = false;
+                continue;
+            }
+        }
         if (ch == KEY_RESIZE && !ensureMinSize()) return false;
     }
 }
 
-void Game::configureCustomRules() {
+bool Game::configureCustomRules() {
     int h, w;
     getmaxyx(stdscr, h, w);
     WINDOW* popup = newwin(18, 72, (h - 18) / 2, (w - 72) / 2);
@@ -225,7 +348,11 @@ void Game::configureCustomRules() {
         } else if (ch == KEY_DOWN) {
             highlight = highlight == startRowIndex ? 0 : highlight + 1;
         } else if (ch == 'q' || ch == 'Q') {
-            break;
+            delwin(popup);
+            return false;
+        } else if (ch == KEY_RESIZE) {
+            delwin(popup);
+            return false;
         } else if (ch == ' ' || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
             if (highlight == startRowIndex) {
                 break;
@@ -239,6 +366,7 @@ void Game::configureCustomRules() {
     rules.components.investCards = rules.toggles.investmentEnabled ? 4 : 0;
     rules.components.petCards = rules.toggles.petsEnabled ? 12 : 0;
     rules.components.spinToWinTokens = rules.toggles.spinToWinEnabled ? 5 : 0;
+    return true;
 }
 
 void Game::showTutorial() {
@@ -314,20 +442,6 @@ void Game::showControlsPopup() const {
 }
 
 void Game::setupRules() {
-    int modeChoice = showBranchPopup(
-        "Choose mode",
-        std::vector<std::string>{
-            "- Normal mode: every optional system is enabled",
-            "- Custom mode: open a rules page and toggle features"
-        },
-        'A',
-        'B');
-
-    rules = modeChoice == 0 ? makeNormalRules() : makeCustomRules();
-    if (modeChoice == 1) {
-        configureCustomRules();
-    }
-
     decks.reset(rules);
     bank.configure(rules);
     retiredCount = 0;
@@ -340,6 +454,7 @@ void Game::setupPlayers() {
     curs_set(1);
     int numPlayers = 0;
     while (numPlayers < 2 || numPlayers > 4) {
+        drawSetupTitle();
         werase(msgWin);
         box(msgWin, 0, 0);
         mvwprintw(msgWin, 1, 2, "How many players? (2-4): ");
@@ -352,6 +467,7 @@ void Game::setupPlayers() {
     players.clear();
     players.reserve(numPlayers);
     for (int i = 0; i < numPlayers; ++i) {
+        drawSetupTitle();
         werase(msgWin);
         box(msgWin, 0, 0);
         mvwprintw(msgWin, 1, 2, "Player %d name: ", i + 1);
@@ -421,6 +537,9 @@ int Game::waitForTurnCommand(int currentPlayer) {
 }
 
 void Game::renderHeader() const {
+    if (!titleWin) {
+        return;
+    }
     draw_title_banner_ui(titleWin);
 }
 
@@ -486,6 +605,7 @@ int Game::rollSpinner(const std::string& title, const std::string& detail) {
     }
     nodelay(msgWin, FALSE);
 
+    flashSpinResult(title, value);
     werase(msgWin);
     box(msgWin, 0, 0);
     mvwprintw(msgWin, 1, 2, "%s", title.c_str());
