@@ -50,6 +50,11 @@ public:
         discardPile.push_back(card);
     }
 
+    void setState(const std::vector<T>& drawCards, const std::vector<T>& discardCards) {
+        drawPile = drawCards;
+        discardPile = discardCards;
+    }
+
     bool empty() const {
         return drawPile.empty() && discardPile.empty();
     }
@@ -84,6 +89,14 @@ public:
             cards.push_back(drawPile[drawPile.size() - 1 - i]);
         }
         return cards;
+    }
+
+    const std::vector<T>& drawCards() const {
+        return drawPile;
+    }
+
+    const std::vector<T>& discardCards() const {
+        return discardPile;
     }
 
 private:

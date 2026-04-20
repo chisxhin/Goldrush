@@ -1,4 +1,5 @@
 #include "game.hpp"
+#include "save_manager.hpp"
 #include "spins.hpp"
 #include "ui.h"
 
@@ -31,7 +32,9 @@ Game::Game()
       infoWin(nullptr),
       msgWin(nullptr),
       hasColor(has_colors()),
-      retiredCount(0) {
+      retiredCount(0),
+      currentPlayerIndex(0),
+      turnCounter(0) {
 }
 
 Game::Game(std::uint32_t seed)
@@ -45,7 +48,9 @@ Game::Game(std::uint32_t seed)
       infoWin(nullptr),
       msgWin(nullptr),
       hasColor(has_colors()),
-      retiredCount(0) {
+      retiredCount(0),
+      currentPlayerIndex(0),
+      turnCounter(0) {
 }
 
 Game::~Game() {
@@ -211,7 +216,63 @@ void Game::flashSpinResult(const std::string& title, int value) const {
     }
 }
 
-bool Game::showStartScreen() {
+bool Game::promptForFilename(const std::string& action,
+                             const std::string& defaultName,
+                             std::string& filename) {
+    echo();
+    curs_set(1);
+    werase(msgWin);
+    box(msgWin, 0, 0);
+    mvwprintw(msgWin, 1, 2, "%s file [%s]: ", action.c_str(), defaultName.c_str());
+    mvwprintw(msgWin, 2, 2, "Press ENTER for the default name.");
+    wrefresh(msgWin);
+
+    char buffer[260] = {0};
+    wgetnstr(msgWin, buffer, 259);
+
+    noecho();
+    curs_set(0);
+
+    filename = buffer;
+    if (filename.empty()) {
+        filename = defaultName;
+    }
+    return true;
+}
+
+bool Game::saveCurrentGame() {
+    std::string filename;
+    promptForFilename("Save", "goldrush_save.sav", filename);
+
+    SaveManager saveManager;
+    std::string error;
+    if (!saveManager.saveGame(*this, filename, error)) {
+        showInfoPopup("Save failed", error);
+        return false;
+    }
+
+    addHistory("Saved game to " + filename);
+    showInfoPopup("Game saved", filename);
+    return true;
+}
+
+bool Game::loadSavedGame() {
+    std::string filename;
+    promptForFilename("Load", "goldrush_save.sav", filename);
+
+    SaveManager saveManager;
+    std::string error;
+    if (!saveManager.loadGame(*this, filename, error)) {
+        showInfoPopup("Load failed", error);
+        return false;
+    }
+
+    addHistory("Loaded game from " + filename);
+    showInfoPopup("Game loaded", filename);
+    return true;
+}
+
+Game::StartChoice Game::showStartScreen() {
     const char* lines[] = {
         "  ________       .__       .___                   .__     ",
         " /  _____/  ____ |  |    __| _/______ __ __  _____|  |__  ",
@@ -249,7 +310,7 @@ bool Game::showStartScreen() {
         if (hasColor) wattron(stdscr, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
         if (!choosingMode) {
             mvprintw(startY + 11, (w - 34) / 2, "A Hasbro-style Life Journey");
-            mvprintw(startY + 13, (w - 20) / 2, "S  Start    Q  Quit");
+            mvprintw(startY + 13, (w - 30) / 2, "N  New    L  Load    Q  Quit");
         } else {
             mvprintw(startY + 11, (w - 23) / 2, "ENTER select    Q back");
             const char* normal = "Normal Mode";
@@ -272,12 +333,13 @@ bool Game::showStartScreen() {
 
         int ch = getch();
         if (!choosingMode) {
-            if (ch == 's' || ch == 'S') {
+            if (ch == 'n' || ch == 'N' || ch == 's' || ch == 'S') {
                 choosingMode = true;
                 highlightedMode = 0;
                 continue;
             }
-            if (ch == 'q' || ch == 'Q') return false;
+            if (ch == 'l' || ch == 'L') return START_LOAD_GAME;
+            if (ch == 'q' || ch == 'Q') return START_QUIT_GAME;
         } else {
             if (ch == KEY_LEFT || ch == KEY_UP) {
                 highlightedMode = highlightedMode == 0 ? 1 : 0;
@@ -294,18 +356,18 @@ bool Game::showStartScreen() {
             if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
                 if (highlightedMode == 0) {
                     rules = makeNormalRules();
-                    return true;
+                    return START_NEW_GAME;
                 }
 
                 rules = makeCustomRules();
                 if (configureCustomRules()) {
-                    return true;
+                    return START_NEW_GAME;
                 }
                 choosingMode = false;
                 continue;
             }
         }
-        if (ch == KEY_RESIZE && !ensureMinSize()) return false;
+        if (ch == KEY_RESIZE && !ensureMinSize()) return START_QUIT_GAME;
     }
 }
 
@@ -444,8 +506,9 @@ void Game::showControlsPopup() const {
     mvwprintw(popup, 3, 2, "ENTER  Confirm a menu or start your turn spin");
     mvwprintw(popup, 4, 2, "SPACE  Hold/release to spin the wheel");
     mvwprintw(popup, 5, 2, "UP/DN  Move through menus and custom mode toggles");
-    mvwprintw(popup, 6, 2, "K/?    Open this controls popup");
-    mvwprintw(popup, 7, 2, "Q      Quit the game");
+    mvwprintw(popup, 6, 2, "S      Save the current game");
+    mvwprintw(popup, 7, 2, "K/?    Open this controls popup");
+    mvwprintw(popup, 8, 2, "Q      Quit the game");
     mvwprintw(popup, 9, 2, "STOP spaces end movement immediately.");
     mvwprintw(popup, 10, 2, "Safe/Risky and retirement choices are prompted when needed.");
     mvwprintw(popup, 11, 2, "Press ENTER");
@@ -458,6 +521,8 @@ void Game::setupRules() {
     decks.reset(rules);
     bank.configure(rules);
     retiredCount = 0;
+    currentPlayerIndex = 0;
+    turnCounter = 0;
     history.clear();
     addHistory("Mode: " + rules.editionName);
 }
@@ -538,9 +603,10 @@ int Game::waitForTurnCommand(int currentPlayer) {
     while (true) {
         int ch = wgetch(infoWin);
         if (ch == 'q' || ch == 'Q') return ch;
+        if (ch == 's' || ch == 'S') return ch;
         if (ch == 'k' || ch == 'K' || ch == '?') {
             showControlsPopup();
-            renderGame(currentPlayer, players[currentPlayer].name + "'s turn", "ENTER spin | K keys | Q quit");
+            renderGame(currentPlayer, players[currentPlayer].name + "'s turn", "ENTER spin | S save | K keys | Q quit/save");
             continue;
         }
         if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
@@ -1318,33 +1384,70 @@ int Game::calculateFinalWorth(const Player& player) const {
 
 bool Game::run() {
     if (!ensureMinSize()) return false;
-    if (!showStartScreen()) return false;
+    while (true) {
+        const StartChoice startChoice = showStartScreen();
+        if (startChoice == START_QUIT_GAME) {
+            return false;
+        }
 
-    createWindows();
-    setupRules();
-    setupPlayers();
-    setupInvestments();
-    showTutorial();
+        createWindows();
+        if (startChoice == START_LOAD_GAME) {
+            if (loadSavedGame()) {
+                break;
+            }
+            destroyWindows();
+            continue;
+        }
 
-    int currentPlayer = 0;
+        setupRules();
+        setupPlayers();
+        setupInvestments();
+        showTutorial();
+        break;
+    }
+
     while (!allPlayersRetired()) {
         if (!ensureMinSize()) return false;
         destroyWindows();
         createWindows();
 
-        if (players[currentPlayer].retired) {
-            currentPlayer = (currentPlayer + 1) % static_cast<int>(players.size());
+        if (players[currentPlayerIndex].retired) {
+            currentPlayerIndex = (currentPlayerIndex + 1) % static_cast<int>(players.size());
             continue;
         }
 
-        renderGame(currentPlayer, players[currentPlayer].name + "'s turn", "ENTER spin | K keys | Q quit");
-        int command = waitForTurnCommand(currentPlayer);
+        renderGame(currentPlayerIndex,
+                   players[currentPlayerIndex].name + "'s turn",
+                   "ENTER spin | S save | K keys | Q quit/save");
+        int command = waitForTurnCommand(currentPlayerIndex);
         if (command == 'q' || command == 'Q') {
+            const int quitChoice = showBranchPopup(
+                "Do you want to save when pressing Q in game?",
+                std::vector<std::string>{
+                    "- Yes, save and quit",
+                    "- No, quit without saving"
+                },
+                'A',
+                'B');
+            if (quitChoice == 0) {
+                if (saveCurrentGame()) {
+                    return false;
+                }
+                renderGame(currentPlayerIndex,
+                           players[currentPlayerIndex].name + "'s turn",
+                           "ENTER spin | S save | K keys | Q quit/save");
+                continue;
+            }
             return false;
         }
+        if (command == 's' || command == 'S') {
+            saveCurrentGame();
+            continue;
+        }
 
-        takeMovementSpin(currentPlayer, "Movement Spin");
-        currentPlayer = (currentPlayer + 1) % static_cast<int>(players.size());
+        takeMovementSpin(currentPlayerIndex, "Movement Spin");
+        ++turnCounter;
+        currentPlayerIndex = (currentPlayerIndex + 1) % static_cast<int>(players.size());
     }
 
     finalizeScoring();

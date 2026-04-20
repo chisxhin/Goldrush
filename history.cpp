@@ -21,3 +21,12 @@ void ActionHistory::clear() {
 std::vector<std::string> ActionHistory::recent() const {
     return std::vector<std::string>(entries.begin(), entries.end());
 }
+
+void ActionHistory::restore(const std::vector<std::string>& snapshot) {
+    clear();
+    for (std::vector<std::string>::const_reverse_iterator it = snapshot.rbegin();
+         it != snapshot.rend();
+         ++it) {
+        add(*it);
+    }
+}

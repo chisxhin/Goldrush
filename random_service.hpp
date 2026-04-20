@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <random>
+#include <sstream>
+#include <string>
 #include <vector>
 
 class RandomService {
@@ -46,6 +48,26 @@ public:
 
     static bool inRange(int value, int minValue, int maxValue) {
         return value >= minValue && value <= maxValue;
+    }
+
+    std::string serializeState() const {
+        std::ostringstream out;
+        out << engine;
+        return out.str();
+    }
+
+    bool restoreState(const std::string& state, bool fixed, std::uint32_t seed) {
+        std::istringstream in(state);
+        std::mt19937 restoredEngine;
+        in >> restoredEngine;
+        if (in.fail()) {
+            return false;
+        }
+
+        fixedSeed = fixed;
+        seedValue = seed;
+        engine = restoredEngine;
+        return true;
     }
 
     bool usesFixedSeed() const {

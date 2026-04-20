@@ -16,6 +16,15 @@ enum CardCategory {
     CARD_PET
 };
 
+enum DeckSlot {
+    DECK_ACTION,
+    DECK_COLLEGE_CAREER,
+    DECK_CAREER,
+    DECK_HOUSE,
+    DECK_INVEST,
+    DECK_PET
+};
+
 enum ActionEffectKind {
     ACTION_NO_EFFECT,
     ACTION_GAIN_CASH,
@@ -103,6 +112,11 @@ struct PetCard {
     bool keepAfterUse;
 };
 
+struct SerializedDeckState {
+    std::vector<std::string> drawIds;
+    std::vector<std::string> discardIds;
+};
+
 class DeckManager {
 public:
     DeckManager(const RuleSet& rules, RandomService& random);
@@ -119,6 +133,10 @@ public:
     bool drawHouseCard(HouseCard& card);
     bool drawInvestCard(InvestCard& card);
     bool drawPetCard(PetCard& card);
+    SerializedDeckState deckState(DeckSlot slot) const;
+    bool restoreDeckState(DeckSlot slot,
+                          const SerializedDeckState& state,
+                          std::string& error);
 
 private:
     RuleSet ruleset;

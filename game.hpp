@@ -13,6 +13,8 @@
 #include "random_service.hpp"
 #include "rules.hpp"
 
+class SaveManager;
+
 class Game {
 public:
     Game();
@@ -22,6 +24,14 @@ public:
     bool run();
 
 private:
+    friend class SaveManager;
+
+    enum StartChoice {
+        START_NEW_GAME,
+        START_LOAD_GAME,
+        START_QUIT_GAME
+    };
+
     static const int MIN_W = 122;
     static const int MIN_H = 40;
     static const int TITLE_W = 122;
@@ -46,6 +56,8 @@ private:
     WINDOW* msgWin;
     bool hasColor;
     int retiredCount;
+    int currentPlayerIndex;
+    int turnCounter;
 
     bool ensureMinSize() const;
     void createWindows();
@@ -55,8 +67,13 @@ private:
     void addHistory(const std::string& entry);
     void drawSetupTitle() const;
     void flashSpinResult(const std::string& title, int value) const;
+    bool promptForFilename(const std::string& action,
+                           const std::string& defaultName,
+                           std::string& filename);
+    bool saveCurrentGame();
+    bool loadSavedGame();
 
-    bool showStartScreen();
+    StartChoice showStartScreen();
     bool configureCustomRules();
     void showTutorial();
     void showControlsPopup() const;

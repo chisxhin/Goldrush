@@ -12,6 +12,7 @@ public:
     void add(const std::string& entry);
     void clear();
     std::vector<std::string> recent() const;
+    void restore(const std::vector<std::string>& snapshot);
 
 private:
     std::deque<std::string> entries;

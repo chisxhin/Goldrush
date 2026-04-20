@@ -1,5 +1,7 @@
 #include "cards.hpp"
 
+#include <map>
+#include <set>
 #include <vector>
 
 namespace {
@@ -272,6 +274,75 @@ std::vector<PetCard> petPrototypes() {
     return cards;
 }
 
+template <typename T>
+SerializedDeckState serializeDeckState(const Deck<T>& deck) {
+    SerializedDeckState state;
+    const std::vector<T>& drawCards = deck.drawCards();
+    const std::vector<T>& discardCards = deck.discardCards();
+
+    state.drawIds.reserve(drawCards.size());
+    for (std::size_t i = 0; i < drawCards.size(); ++i) {
+        state.drawIds.push_back(drawCards[i].id);
+    }
+
+    state.discardIds.reserve(discardCards.size());
+    for (std::size_t i = 0; i < discardCards.size(); ++i) {
+        state.discardIds.push_back(discardCards[i].id);
+    }
+    return state;
+}
+
+template <typename T>
+std::map<std::string, T> buildCardIndex(const std::vector<T>& cards) {
+    std::map<std::string, T> index;
+    for (std::size_t i = 0; i < cards.size(); ++i) {
+        index[cards[i].id] = cards[i];
+    }
+    return index;
+}
+
+template <typename T>
+bool restoreDeckStateInternal(Deck<T>& deck,
+                              const std::vector<T>& allCards,
+                              const SerializedDeckState& state,
+                              std::string& error) {
+    const std::map<std::string, T> index = buildCardIndex(allCards);
+    std::vector<T> drawCards;
+    std::vector<T> discardCards;
+    std::set<std::string> seenIds;
+
+    drawCards.reserve(state.drawIds.size());
+    for (std::size_t i = 0; i < state.drawIds.size(); ++i) {
+        const typename std::map<std::string, T>::const_iterator found = index.find(state.drawIds[i]);
+        if (found == index.end()) {
+            error = "Unknown card id in draw pile: " + state.drawIds[i];
+            return false;
+        }
+        if (!seenIds.insert(state.drawIds[i]).second) {
+            error = "Duplicate card id in deck state: " + state.drawIds[i];
+            return false;
+        }
+        drawCards.push_back(found->second);
+    }
+
+    discardCards.reserve(state.discardIds.size());
+    for (std::size_t i = 0; i < state.discardIds.size(); ++i) {
+        const typename std::map<std::string, T>::const_iterator found = index.find(state.discardIds[i]);
+        if (found == index.end()) {
+            error = "Unknown card id in discard pile: " + state.discardIds[i];
+            return false;
+        }
+        if (!seenIds.insert(state.discardIds[i]).second) {
+            error = "Duplicate card id in deck state: " + state.discardIds[i];
+            return false;
+        }
+        discardCards.push_back(found->second);
+    }
+
+    deck.setState(drawCards, discardCards);
+    return true;
+}
+
 }
 
 bool actionCardUsesRoll(const ActionCard& card) {
@@ -393,6 +464,71 @@ bool DeckManager::drawInvestCard(InvestCard& card) {
 
 bool DeckManager::drawPetCard(PetCard& card) {
     return petDeck.draw(card);
+}
+
+SerializedDeckState DeckManager::deckState(DeckSlot slot) const {
+    switch (slot) {
+        case DECK_ACTION:
+            return serializeDeckState(actionDeck);
+        case DECK_COLLEGE_CAREER:
+            return serializeDeckState(collegeCareerDeck);
+        case DECK_CAREER:
+            return serializeDeckState(careerDeck);
+        case DECK_HOUSE:
+            return serializeDeckState(houseDeck);
+        case DECK_INVEST:
+            return serializeDeckState(investDeck);
+        case DECK_PET:
+            return serializeDeckState(petDeck);
+        default:
+            return SerializedDeckState();
+    }
+}
+
+bool DeckManager::restoreDeckState(DeckSlot slot,
+                                   const SerializedDeckState& state,
+                                   std::string& error) {
+    switch (slot) {
+        case DECK_ACTION:
+            return restoreDeckStateInternal(
+                actionDeck,
+                expandDeck(actionPrototypes(), ruleset.components.actionCards),
+                state,
+                error);
+        case DECK_COLLEGE_CAREER:
+            return restoreDeckStateInternal(
+                collegeCareerDeck,
+                expandDeck(collegeCareerPrototypes(), ruleset.components.collegeCareerCards),
+                state,
+                error);
+        case DECK_CAREER:
+            return restoreDeckStateInternal(
+                careerDeck,
+                expandDeck(careerPrototypes(), ruleset.components.careerCards),
+                state,
+                error);
+        case DECK_HOUSE:
+            return restoreDeckStateInternal(
+                houseDeck,
+                expandDeck(housePrototypes(), ruleset.components.houseCards),
+                state,
+                error);
+        case DECK_INVEST:
+            return restoreDeckStateInternal(
+                investDeck,
+                expandDeck(investPrototypes(ruleset), ruleset.components.investCards),
+                state,
+                error);
+        case DECK_PET:
+            return restoreDeckStateInternal(
+                petDeck,
+                expandDeck(petPrototypes(), ruleset.components.petCards),
+                state,
+                error);
+        default:
+            error = "Unknown deck slot.";
+            return false;
+    }
 }
 
 void DeckManager::initDecks(bool reshuffle) {
