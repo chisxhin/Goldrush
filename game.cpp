@@ -1,4 +1,5 @@
 #include "game.hpp"
+#include "pong.hpp"
 #include "save_manager.hpp"
 #include "spins.hpp"
 #include "ui.h"
@@ -425,6 +426,8 @@ bool Game::saveCurrentGame() {
     if (createdTime == 0) {
         createdTime = std::time(0);
     }
+    // The save file name can change over time, but the game id stays stable so
+    // duplicate copies of the same run can be detected and archived.
     assignedSaveFilename = saveManager.normalizeFilename(filename);
     lastSavedTime = std::time(0);
 
@@ -500,6 +503,8 @@ Game::StartChoice Game::showStartScreen() {
     };
     const int artLines = static_cast<int>(sizeof(lines) / sizeof(lines[0]));
     const int artW = 60;
+    // The title screen is a two-step state machine: first choose new/load/quit,
+    // then choose the ruleset for a new game.
     bool choosingMode = false;
     int highlightedMode = 0;
 
@@ -926,6 +931,42 @@ int Game::showBranchPopup(const std::string& title,
     values.push_back(0);
     values.push_back(1);
     return choose_branch_with_selector(title, lines, values, 0);
+}
+
+void Game::playBlackTileMinigame(int playerIndex) {
+    Player& player = players[playerIndex];
+    addHistory(player.name + " landed on a black tile and entered Pong");
+    showInfoPopup("BLACK TILE: PONG",
+                  "One life. Each paddle return earns $100. Press ENTER to start.");
+
+    const PongMinigameResult result = playPongMinigame(player.name, hasColor);
+
+    if (titleWin) touchwin(titleWin);
+    if (boardWin) touchwin(boardWin);
+    if (infoWin) touchwin(infoWin);
+    if (msgWin) touchwin(msgWin);
+
+    if (result.abandoned) {
+        addHistory(player.name + " left Pong before finishing");
+        renderGame(playerIndex, player.name + " left the Pong sidegame", "No payout awarded");
+        showInfoPopup("PONG sidegame", "Exited early. No payout awarded.");
+        return;
+    }
+
+    const int payout = result.playerScore * 100;
+    if (payout > 0) {
+        bank.credit(player, payout);
+    }
+
+    std::ostringstream summary;
+    summary << "Score " << result.playerScore
+            << " | CPU " << result.cpuScore
+            << " | Earned $" << payout;
+
+    addHistory(player.name + " scored " + std::to_string(result.playerScore) +
+               " in Pong and earned $" + std::to_string(payout));
+    renderGame(playerIndex, player.name + " finished the Pong sidegame", summary.str());
+    showInfoPopup("PONG sidegame", summary.str());
 }
 
 int Game::findPreviousTile(const Player& player, int tileId) const {
@@ -1390,7 +1431,7 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
             addHistory(player.name + " started the journey");
             break;
         case TILE_BLACK:
-            playActionCard(playerIndex, tile);
+            playBlackTileMinigame(playerIndex);
             return;
         case TILE_COLLEGE: {
             PaymentResult payment = bank.charge(player, 100000);

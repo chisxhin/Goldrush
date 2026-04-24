@@ -3,7 +3,7 @@ CXXFLAGS = -std=c++17 -Wall -Wextra
 LIBS = -lncurses
 FS_LIBS ?=
 
-OBJS = main.o game.o board.o player.o ui.o rules.o cards.o bank.o history.o spins.o save_manager.o
+OBJS = main.o game.o board.o player.o ui.o rules.o cards.o bank.o history.o spins.o save_manager.o pong.o
 
 all: gameoflife
 

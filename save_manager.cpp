@@ -925,6 +925,9 @@ bool SaveManager::loadGame(Game& game,
             continue;
         }
 
+        // Save data is stored as tab-separated records. Every field is escaped on
+        // write, so loading always begins by splitting the raw line and decoding
+        // each field before dispatching on the record prefix.
         std::vector<std::string> parts = splitTabbed(line);
         for (std::size_t i = 0; i < parts.size(); ++i) {
             std::string decoded;
@@ -1129,6 +1132,8 @@ bool SaveManager::loadGame(Game& game,
     game.lastSavedTime = data.lastSavedTime;
     game.decks.reset(game.rules, false);
 
+    // The deck order and RNG state are restored after the high-level game data
+    // so future draws and rolls continue from the exact same timeline.
     if (!game.decks.restoreDeckState(DECK_ACTION, data.actionDeck, error)) return false;
     if (!game.decks.restoreDeckState(DECK_COLLEGE_CAREER, data.collegeCareerDeck, error)) return false;
     if (!game.decks.restoreDeckState(DECK_CAREER, data.careerDeck, error)) return false;

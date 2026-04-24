@@ -96,6 +96,7 @@ private:
                         const std::vector<std::string>& lines,
                         char a,
                         char b);
+    void playBlackTileMinigame(int playerIndex);
     int playActionCard(int playerIndex, const Tile& tile);
     void applyTileEffect(int playerIndex, const Tile& tile);
     int findPreviousTile(const Player& player, int tileId) const;

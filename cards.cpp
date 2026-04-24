@@ -311,6 +311,9 @@ bool restoreDeckStateInternal(Deck<T>& deck,
     std::vector<T> discardCards;
     std::set<std::string> seenIds;
 
+    // Save files store deck contents by card id. On load we rebuild the exact
+    // physical card instances from the current ruleset and then map ids back to
+    // real card objects, while rejecting duplicates and unknown ids.
     drawCards.reserve(state.drawIds.size());
     for (std::size_t i = 0; i < state.drawIds.size(); ++i) {
         const typename std::map<std::string, T>::const_iterator found = index.find(state.drawIds[i]);
@@ -488,6 +491,8 @@ SerializedDeckState DeckManager::deckState(DeckSlot slot) const {
 bool DeckManager::restoreDeckState(DeckSlot slot,
                                    const SerializedDeckState& state,
                                    std::string& error) {
+    // Each slot regenerates its full card pool first so save files only need to
+    // persist ids, not a full serialized copy of every card definition.
     switch (slot) {
         case DECK_ACTION:
             return restoreDeckStateInternal(
