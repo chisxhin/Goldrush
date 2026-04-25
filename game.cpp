@@ -3,6 +3,7 @@
 #include "pong.hpp"
 #include "hangman.hpp"
 #include "memory.hpp"
+#include "minesweeper.hpp"
 #include "save_manager.hpp"
 #include "spins.hpp"
 #include "ui.h"
@@ -832,6 +833,17 @@ void Game::setupInvestments() {
 int Game::waitForTurnCommand(int currentPlayer) {
     while (true) {
         int ch = wgetch(infoWin);
+        if (ch == KEY_RESIZE) {
+            if (!ensureMinSize()) {
+                return 'q';
+            }
+            destroyWindows();
+            createWindows();
+            renderGame(currentPlayer,
+                       players[currentPlayer].name + "'s turn",
+                       "ENTER spin | S save | K keys | Q quit/save");
+            continue;
+        }
         if (ch == 'q' || ch == 'Q') return ch;
         if (ch == 's' || ch == 'S') return ch;
         if (ch == 'k' || ch == 'K' || ch == '?') {
@@ -938,8 +950,8 @@ int Game::showBranchPopup(const std::string& title,
 
 void Game::playBlackTileMinigame(int playerIndex) {
     Player& player = players[playerIndex];
-    // Now 4 minigames: Pong (0), Battleship (1), Hangman (2), Memory (3)
-    const int minigameChoice = rng.uniformInt(0, 3);
+    // Now 5 minigames: Pong (0), Battleship (1), Hangman (2), Memory (3), Minesweeper (4)
+    const int minigameChoice = rng.uniformInt(0, 4);
 
     if (titleWin) touchwin(titleWin);
     if (boardWin) touchwin(boardWin);
@@ -1025,7 +1037,7 @@ void Game::playBlackTileMinigame(int playerIndex) {
     else if (minigameChoice == 2) {
         addHistory(player.name + " landed on a black tile and entered Hangman");
         showInfoPopup("BLACK TILE: HANGMAN",
-                    "Guess the word before the hangman is completed. Each wrong guess draws part of the hangman.");
+                    "Guess the word. Hint unlocks after 5 misses. Each revealed letter is worth $100.");
         
         const HangmanResult result = playHangmanMinigame(player.name, hasColor);
         
@@ -1041,20 +1053,23 @@ void Game::playBlackTileMinigame(int playerIndex) {
             return;
         }
         
-        // Payout: $5000 for winning, $0 for losing
-        const int payout = result.won ? 5000 : 0;
+        const int payout = result.lettersGuessed * 100;
         if (payout > 0) {
             bank.credit(player, payout);
         }
-        
+
         std::ostringstream summary;
         if (result.won) {
-            summary << "Word guessed! Attempts left: " << result.attemptsLeft << " | +$5000";
+            summary << "Word guessed! Letters revealed: " << result.lettersGuessed
+                    << " | Earned $" << payout;
         } else {
-            summary << "Failed to guess the word | No payout";
+            summary << "Hangman completed | Letters revealed: " << result.lettersGuessed
+                    << " | Earned $" << payout;
         }
-        
-        addHistory(player.name + (result.won ? " won Hangman and earned $5000" : " lost Hangman"));
+
+        addHistory(player.name + (result.won
+                   ? " won Hangman and earned $" + std::to_string(payout)
+                   : " lost Hangman and earned $" + std::to_string(payout)));
         renderGame(playerIndex, player.name + " finished the Hangman sidegame", summary.str());
         showInfoPopup("HANGMAN sidegame", summary.str());
         return;
@@ -1080,8 +1095,7 @@ void Game::playBlackTileMinigame(int playerIndex) {
             return;
         }
         
-        // Payout: $1000 per pair matched, $5000 bonus for winning
-        const int payout = (result.pairsMatched * 1000) + (result.won ? 5000 : 0);
+        const int payout = (result.pairsMatched * 100) + (result.won ? 200 : 0);
         if (payout > 0) {
             bank.credit(player, payout);
         }
@@ -1096,7 +1110,48 @@ void Game::playBlackTileMinigame(int playerIndex) {
         renderGame(playerIndex, player.name + " finished the Memory Match sidegame", summary.str());
         showInfoPopup("MEMORY MATCH sidegame", summary.str());
         return;
-    } 
+    }
+
+    if (minigameChoice == 4) {
+        const int minesweeperSafeTileTotal = 15;
+        addHistory(player.name + " landed on a black tile and entered Minesweeper");
+        showInfoPopup("BLACK TILE: MINESWEEPER",
+                      "Reveal safe tiles for 60 seconds. One bomb ends the run. Each safe tile is worth $100.");
+
+        const MinesweeperResult result = playMinesweeperMinigame(player.name, hasColor);
+
+        if (titleWin) touchwin(titleWin);
+        if (boardWin) touchwin(boardWin);
+        if (infoWin) touchwin(infoWin);
+        if (msgWin) touchwin(msgWin);
+
+        if (result.abandoned) {
+            addHistory(player.name + " left Minesweeper before finishing");
+            renderGame(playerIndex, player.name + " left the Minesweeper sidegame", "No payout awarded");
+            showInfoPopup("MINESWEEPER sidegame", "Exited early. No payout awarded.");
+            return;
+        }
+
+        const int payout = result.safeTilesRevealed * 100;
+        if (payout > 0) {
+            bank.credit(player, payout);
+        }
+
+        std::ostringstream summary;
+        summary << "Safe tiles: " << result.safeTilesRevealed << "/" << minesweeperSafeTileTotal;
+        if (result.hitBomb) {
+            summary << " | Bomb hit";
+        } else {
+            summary << " | Time up";
+        }
+        summary << " | Earned $" << payout;
+
+        addHistory(player.name + " cleared " + std::to_string(result.safeTilesRevealed) +
+                   " safe tiles in Minesweeper and earned $" + std::to_string(payout));
+        renderGame(playerIndex, player.name + " finished the Minesweeper sidegame", summary.str());
+        showInfoPopup("MINESWEEPER sidegame", summary.str());
+        return;
+    }
 }
 
 int Game::findPreviousTile(const Player& player, int tileId) const {

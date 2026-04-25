@@ -1,20 +1,12 @@
 #include "memory.hpp"
+#include "ui.h"
 
 #include <ncurses.h>
-#include <cstdlib>
 #include <cstring>
-#include <ctime>
 #include <algorithm>
-#include <vector>
 #include <random>
-
-// Color constants
-enum MemoryColorPair {
-    MEMORY_GOLD_BLACK = 1,
-    MEMORY_GOLD_SAND = 8,
-    MEMORY_BLACK_FOREST = 13,
-    MEMORY_GOLD_TERRA = 15
-};
+#include <ctime>
+#include <vector>
 
 namespace {
 
@@ -30,6 +22,15 @@ const int TOTAL_GRID_WIDTH = GRID_SIZE * CELL_WIDTH;
 
 const std::vector<char> SYMBOLS = {
     '~', '@', '#', '$', '%', '&', '+', '*'
+};
+
+const std::vector<std::string> MEMORY_TITLE = {
+    " _      _____ _      ____  ____ ___  _ _____ ____  _      _____",
+    "/ \\__/|/  __// \\__/|/  _ \\/  __\\\\  \\///  __//  _ \\/ \\__/|/  __/",
+    "| |\\/|||  \\  | |\\/||| / \\||  \\/| \\  / | |  _| / \\|| |\\/|||  \\  ",
+    "| |  |||  /_ | |  ||| \\_/||    / / /  | |_//| |-||| |  |||  /_ ",
+    "\\_/  \\|\\____\\\\_/  \\|\\____/\\_/\\_\\/_/   \\____\\\\_/ \\|\\_/  \\|\\____\\",
+    "                                                               "
 };
 
 struct Cell {
@@ -54,21 +55,12 @@ void shuffleGrid(std::vector<Cell>& grid) {
     }
 }
 
-void initMemoryColors() {
-    if (has_colors()) {
-        init_pair(MEMORY_GOLD_BLACK, COLOR_YELLOW, COLOR_BLACK);
-        init_pair(MEMORY_GOLD_SAND, COLOR_YELLOW, COLOR_BLACK);
-        init_pair(MEMORY_BLACK_FOREST, COLOR_GREEN, COLOR_BLACK);
-        init_pair(MEMORY_GOLD_TERRA, COLOR_RED, COLOR_BLACK);
-    }
-}
-
 void drawCell(WINDOW* win, int y, int x, char symbol, bool isRevealed, bool isMatched, 
               bool isSelected, bool revealAll) {
-    // Draw border
     if (isSelected) {
         wattron(win, A_REVERSE);
     }
+
     for (int i = 0; i < CELL_WIDTH; ++i) {
         mvwaddch(win, y, x + i, ACS_HLINE);
         mvwaddch(win, y + CELL_HEIGHT - 1, x + i, ACS_HLINE);
@@ -81,11 +73,7 @@ void drawCell(WINDOW* win, int y, int x, char symbol, bool isRevealed, bool isMa
     mvwaddch(win, y, x + CELL_WIDTH - 1, ACS_URCORNER);
     mvwaddch(win, y + CELL_HEIGHT - 1, x, ACS_LLCORNER);
     mvwaddch(win, y + CELL_HEIGHT - 1, x + CELL_WIDTH - 1, ACS_LRCORNER);
-    if (isSelected) {
-        wattroff(win, A_REVERSE);
-    }
-    
-    // Draw content
+
     if (isMatched || revealAll) {
         wattron(win, A_BOLD);
         mvwprintw(win, y + 1, x + 2, "%c", symbol);
@@ -94,6 +82,23 @@ void drawCell(WINDOW* win, int y, int x, char symbol, bool isRevealed, bool isMa
         mvwprintw(win, y + 1, x + 2, "%c", symbol);
     } else {
         mvwprintw(win, y + 1, x + 2, "?");
+    }
+
+    if (isSelected) {
+        wattroff(win, A_REVERSE);
+    }
+}
+
+void drawAsciiTitle(WINDOW* win, int screenW, bool hasColor) {
+    if (hasColor) {
+        wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+    }
+    for (std::size_t i = 0; i < MEMORY_TITLE.size(); ++i) {
+        mvwprintw(win, static_cast<int>(i), (screenW - static_cast<int>(MEMORY_TITLE[i].size())) / 2,
+                  "%s", MEMORY_TITLE[i].c_str());
+    }
+    if (hasColor) {
+        wattroff(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
     }
 }
 
@@ -108,11 +113,7 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
     
     WINDOW* overlay = newwin(0, 0, 0, 0);
     keypad(overlay, TRUE);
-    
-    if (hasColor) {
-        initMemoryColors();
-    }
-    
+
     std::vector<Cell> grid(TOTAL_CELLS);
     shuffleGrid(grid);
     
@@ -143,41 +144,54 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
         werase(overlay);
         
         if (hasColor) {
-            wbkgd(overlay, COLOR_PAIR(MEMORY_GOLD_BLACK));
-        }
-        
-        // Title (centered)
-        const char* title = "MEMORY MATCH SIDEGAME";
-        int titleLen = strlen(title);
-        if (hasColor) {
-            wattron(overlay, COLOR_PAIR(MEMORY_GOLD_SAND) | A_BOLD);
-        }
-        mvwprintw(overlay, gridStartY - 4, (screenW - titleLen) / 2, "%s", title);
-        if (hasColor) {
-            wattroff(overlay, COLOR_PAIR(MEMORY_GOLD_SAND) | A_BOLD);
+            wbkgd(overlay, COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
         }
 
-        // Status (centered)
+        const int arenaWidth = 70;
+        const int arenaHeight = 24;
+        const int arenaLeft = (screenW - arenaWidth) / 2;
+        const int arenaTop = 7;
+        const int arenaRight = arenaLeft + arenaWidth - 1;
+        const int arenaBottom = arenaTop + arenaHeight - 1;
+        
+        drawAsciiTitle(overlay, screenW, hasColor);
+
+        if (hasColor) {
+            wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
+        }
+        mvwhline(overlay, arenaTop, arenaLeft, ACS_HLINE, arenaWidth);
+        mvwhline(overlay, arenaBottom, arenaLeft, ACS_HLINE, arenaWidth);
+        mvwvline(overlay, arenaTop, arenaLeft, ACS_VLINE, arenaHeight);
+        mvwvline(overlay, arenaTop, arenaRight, ACS_VLINE, arenaHeight);
+        mvwaddch(overlay, arenaTop, arenaLeft, ACS_ULCORNER);
+        mvwaddch(overlay, arenaTop, arenaRight, ACS_URCORNER);
+        mvwaddch(overlay, arenaBottom, arenaLeft, ACS_LLCORNER);
+        mvwaddch(overlay, arenaBottom, arenaRight, ACS_LRCORNER);
+        if (hasColor) {
+            wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
+        }
+
         char status[100];
         snprintf(status, sizeof(status), "Player: %s  |  Pairs: %d/8  |  Lives: %d",
                 playerName.c_str(), result.pairsMatched, result.livesRemaining);
         int statusLen = strlen(status);
-        mvwprintw(overlay, gridStartY - 2, (screenW - statusLen) / 2, "%s", status);
+        mvwprintw(overlay, 6, (screenW - statusLen) / 2, "%s", status);
 
-        // Help text (centered)
         char helpText[100];
         snprintf(helpText, sizeof(helpText), "Help uses: %d/5 (press H)", MAX_HELP_USES - helpUses);
         int helpLen = strlen(helpText);
-        mvwprintw(overlay, gridStartY - 1, (screenW - helpLen) / 2, "%s", helpText);
+        mvwprintw(overlay, arenaTop + 1, (screenW - helpLen) / 2, "%s", helpText);
 
-        // Instructions (centered)
         const char* instructions = "Arrow Keys: Move  |  ENTER/Space: Select  |  H: Help  |  Q: Quit";
         int instrLen = strlen(instructions);
-        mvwprintw(overlay, gridStartY + (GRID_SIZE * CELL_HEIGHT) + 1, (screenW - instrLen) / 2, "%s", instructions);
+        mvwprintw(overlay, arenaBottom - 2, (screenW - instrLen) / 2, "%s", instructions);
+        mvwprintw(overlay, arenaBottom - 1, (screenW - 46) / 2,
+                  "Match pairs for $100 each. Clear all for a $200 bonus.");
+
+        gridStartY = arenaTop + 5;
+        gridStartX = arenaLeft + (arenaWidth - TOTAL_GRID_WIDTH) / 2;
         
-        // Memorization phase
         if (memorizationPhase) {
-            // Draw all cells revealed
             for (int row = 0; row < GRID_SIZE; ++row) {
                 for (int col = 0; col < GRID_SIZE; ++col) {
                     int idx = row * GRID_SIZE + col;
@@ -187,7 +201,7 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
                 }
             }
             
-            mvwprintw(overlay, gridStartY + (GRID_SIZE * CELL_HEIGHT) + 3, (screenW - 30) / 2, 
+            mvwprintw(overlay, arenaBottom - 4, (screenW - 30) / 2, 
                       "Memorize the positions! 5 seconds...");
             wrefresh(overlay);
             
@@ -203,14 +217,12 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
             continue;
         }
         
-        // Draw grid
         for (int row = 0; row < GRID_SIZE; ++row) {
             for (int col = 0; col < GRID_SIZE; ++col) {
                 int idx = row * GRID_SIZE + col;
                 int x = gridStartX + col * CELL_WIDTH;
                 int y = gridStartY + row * CELL_HEIGHT;
-                bool isSelected = (row == currentRow && col == currentCol && 
-                                  !grid[idx].matched && !grid[idx].revealed);
+                bool isSelected = (row == currentRow && col == currentCol);
                 drawCell(overlay, y, x, grid[idx].symbol, grid[idx].revealed, 
                         grid[idx].matched, isSelected, false);
             }
@@ -218,7 +230,6 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
         
         wrefresh(overlay);
         
-        // Handle input
         int ch = wgetch(overlay);
         
         if (ch == 'q' || ch == 'Q') {
@@ -229,7 +240,6 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
         if (ch == 'h' || ch == 'H') {
             if (helpUses < MAX_HELP_USES) {
                 helpUses++;
-                // Reveal all cells
                 for (int row = 0; row < GRID_SIZE; ++row) {
                     for (int col = 0; col < GRID_SIZE; ++col) {
                         int idx = row * GRID_SIZE + col;
@@ -244,7 +254,6 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
             }
         }
         
-        // Movement
         if (ch == KEY_UP) {
             currentRow = (currentRow - 1 + GRID_SIZE) % GRID_SIZE;
         } else if (ch == KEY_DOWN) {
@@ -253,8 +262,7 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
             currentCol = (currentCol - 1 + GRID_SIZE) % GRID_SIZE;
         } else if (ch == KEY_RIGHT) {
             currentCol = (currentCol + 1) % GRID_SIZE;
-        } 
-        // Selection
+        }
         else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == ' ') {
             int cellIdx = currentRow * GRID_SIZE + currentCol;
             
@@ -287,32 +295,49 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
     
     result.won = (result.pairsMatched == TOTAL_PAIRS);
     
-    // End screen
     int screenH, screenW;
     getmaxyx(stdscr, screenH, screenW);
+    const int arenaWidth = 70;
+    const int arenaHeight = 24;
+    const int arenaLeft = (screenW - arenaWidth) / 2;
+    const int arenaTop = 2;
+    const int arenaRight = arenaLeft + arenaWidth - 1;
+    const int arenaBottom = arenaTop + arenaHeight - 1;
     
     werase(overlay);
     if (hasColor) {
-        wattron(overlay, result.won ? COLOR_PAIR(MEMORY_BLACK_FOREST) : COLOR_PAIR(MEMORY_GOLD_TERRA) | A_BOLD);
+        wbkgd(overlay, COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
+        wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
+    }
+    mvwhline(overlay, arenaTop, arenaLeft, ACS_HLINE, arenaWidth);
+    mvwhline(overlay, arenaBottom, arenaLeft, ACS_HLINE, arenaWidth);
+    mvwvline(overlay, arenaTop, arenaLeft, ACS_VLINE, arenaHeight);
+    mvwvline(overlay, arenaTop, arenaRight, ACS_VLINE, arenaHeight);
+    mvwaddch(overlay, arenaTop, arenaLeft, ACS_ULCORNER);
+    mvwaddch(overlay, arenaTop, arenaRight, ACS_URCORNER);
+    mvwaddch(overlay, arenaBottom, arenaLeft, ACS_LLCORNER);
+    mvwaddch(overlay, arenaBottom, arenaRight, ACS_LRCORNER);
+    if (hasColor) {
+        wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
     }
     
     if (result.won) {
+        if (hasColor) wattron(overlay, COLOR_PAIR(GOLDRUSH_BLACK_FOREST) | A_BOLD);
         mvwprintw(overlay, screenH/2 - 2, (screenW - 30) / 2, "VICTORY!");
         mvwprintw(overlay, screenH/2 - 1, (screenW - 50) / 2, "You matched all %d pairs!", TOTAL_PAIRS);
-        mvwprintw(overlay, screenH/2, (screenW - 40) / 2, "Lives remaining: %d", result.livesRemaining);
+        mvwprintw(overlay, screenH/2, (screenW - 46) / 2, "Lives remaining: %d  |  Earned $1000", result.livesRemaining);
+        if (hasColor) wattroff(overlay, COLOR_PAIR(GOLDRUSH_BLACK_FOREST) | A_BOLD);
     } else if (result.abandoned) {
         mvwprintw(overlay, screenH/2 - 1, (screenW - 30) / 2, "Game abandoned.");
     } else {
+        if (hasColor) wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_TERRA) | A_BOLD);
         mvwprintw(overlay, screenH/2 - 2, (screenW - 30) / 2, "GAME OVER!");
         mvwprintw(overlay, screenH/2 - 1, (screenW - 45) / 2, "You ran out of lives!");
-        mvwprintw(overlay, screenH/2, (screenW - 40) / 2, "Pairs matched: %d/8", result.pairsMatched);
+        mvwprintw(overlay, screenH/2, (screenW - 46) / 2, "Pairs matched: %d/8  |  Earned $%d", result.pairsMatched, result.pairsMatched * 100);
+        if (hasColor) wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_TERRA) | A_BOLD);
     }
     
     mvwprintw(overlay, screenH/2 + 2, (screenW - 30) / 2, "Press ENTER to continue.");
-    if (hasColor) {
-        wattroff(overlay, COLOR_PAIR(MEMORY_BLACK_FOREST) | A_BOLD);
-        wattroff(overlay, COLOR_PAIR(MEMORY_GOLD_TERRA) | A_BOLD);
-    }
     wrefresh(overlay);
     
     int ch;

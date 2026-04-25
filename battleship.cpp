@@ -10,6 +10,30 @@
 #include "ui.h"
 
 namespace {
+const std::vector<std::string> BATTLESHIP_TITLE = {
+    " ____    ____  ______  ______  _        ___  _____ __ __  ____  ____  ",
+    "|    \\  /    ||      ||      || |      /  _]/ ___/|  |  ||    ||    \\ ",
+    "|  o  )|  o  ||      ||      || |     /  [_(   \\_ |  |  | |  | |  o  )",
+    "|     ||     ||_|  |_||_|  |_|| |___ |    _]\\__  ||  _  | |  | |   _/ ",
+    "|  O  ||  _  |  |  |    |  |  |     ||   [_ /  \\ ||  |  | |  | |  |   ",
+    "|     ||  |  |  |  |    |  |  |     ||     |\\    ||  |  | |  | |  |   ",
+    "|_____||__|__|  |__|    |__|  |_____||_____| \\___||__|__||____||__|   ",
+    "                                                                      "
+};
+
+void drawAsciiTitle(WINDOW* win, int screenW, bool hasColor) {
+    if (hasColor) {
+        wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+    }
+    for (std::size_t i = 0; i < BATTLESHIP_TITLE.size(); ++i) {
+        mvwprintw(win, static_cast<int>(i), (screenW - static_cast<int>(BATTLESHIP_TITLE[i].size())) / 2,
+                  "%s", BATTLESHIP_TITLE[i].c_str());
+    }
+    if (hasColor) {
+        wattroff(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+    }
+}
+
 struct EnemyShip {
     int x;
     int y;
@@ -81,7 +105,7 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
     const int arenaWidth = 86;
     const int arenaHeight = 28;
     const int arenaLeft = (screenW - arenaWidth) / 2;
-    const int arenaTop = 2;
+    const int arenaTop = 9;
     const int arenaRight = arenaLeft + arenaWidth - 1;
     const int arenaBottom = arenaTop + arenaHeight - 1;
     const int playerY = arenaBottom - 3;
@@ -118,18 +142,13 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
     while (true) {
         werase(overlay);
 
-        if (hasColor) {
-            wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-        }
-        mvwprintw(overlay, 0, (screenW - 24) / 2, "BATTLESHIP SIDEGAME");
-        if (hasColor) {
-            wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-        }
+        drawAsciiTitle(overlay, screenW, hasColor);
 
-        mvwprintw(overlay, 1, arenaLeft,
-                  "%s vs Enemy Fleet  |  Score: %d  |  Wave: 1",
-                  playerName.c_str(),
-                  result.shipsDestroyed);
+        const std::string statusLine =
+            playerName + " vs Enemy Fleet  |  Score: " + std::to_string(result.shipsDestroyed) +
+            "  |  Wave: 1";
+        mvwprintw(overlay, 8, (screenW - static_cast<int>(statusLine.size())) / 2,
+                  "%s", statusLine.c_str());
 
         if (hasColor) {
             wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);

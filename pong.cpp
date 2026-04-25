@@ -4,10 +4,34 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include "ui.h"
 
 namespace {
+const std::vector<std::string> PONG_TITLE = {
+    ".______     ______   .__   __.   _______ ",
+    "|   _  \\   /  __  \\  |  \\ |  |  /  _____|",
+    "|  |_)  | |  |  |  | |   \\|  | |  |  __  ",
+    "|   ___/  |  |  |  | |  . `  | |  | |_ | ",
+    "|  |      |  `--'  | |  |\\   | |  |__| | ",
+    "| _|       \\______/  |__| \\__|  \\______| ",
+    "                                         "
+};
+
+void drawAsciiTitle(WINDOW* win, int screenW, bool hasColor) {
+    if (hasColor) {
+        wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+    }
+    for (std::size_t i = 0; i < PONG_TITLE.size(); ++i) {
+        mvwprintw(win, static_cast<int>(i), (screenW - static_cast<int>(PONG_TITLE[i].size())) / 2,
+                  "%s", PONG_TITLE[i].c_str());
+    }
+    if (hasColor) {
+        wattroff(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+    }
+}
+
 struct Paddle {
     float centerY;
 };
@@ -74,7 +98,7 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
     const int arenaWidth = 78;
     const int arenaHeight = 24;
     const int arenaLeft = (screenW - arenaWidth) / 2;
-    const int arenaTop = 3;
+    const int arenaTop = 8;
     const int arenaRight = arenaLeft + arenaWidth - 1;
     const int arenaBottom = arenaTop + arenaHeight - 1;
     const int paddleHalfHeight = 2;
@@ -101,17 +125,12 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
     while (true) {
         werase(overlay);
 
-        if (hasColor) {
-            wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-        }
-        mvwprintw(overlay, 0, (screenW - 18) / 2, "PONG SIDEGAME");
-        if (hasColor) {
-            wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-        }
+        drawAsciiTitle(overlay, screenW, hasColor);
 
-        mvwprintw(overlay, 1, (screenW - 58) / 2,
-                  "%s vs CPU  |  One life  |  Score x $100 payout",
-                  playerName.c_str());
+        const std::string statusLine =
+            playerName + " vs CPU  |  One life  |  Score x $100 payout";
+        mvwprintw(overlay, 7, (screenW - static_cast<int>(statusLine.size())) / 2,
+                  "%s", statusLine.c_str());
 
         if (hasColor) {
             wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
