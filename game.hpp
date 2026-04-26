@@ -9,6 +9,7 @@
 #include "bank.hpp"
 #include "board.hpp"
 #include "cards.hpp"
+#include "cpu_player.hpp"
 #include "history.hpp"
 #include "player.hpp"
 #include "random_service.hpp"
@@ -49,6 +50,7 @@ private:
     std::vector<Player> players;
     RuleSet rules;
     RandomService rng;
+    CpuController cpu;
     DeckManager decks;
     Bank bank;
     ActionHistory history;
@@ -64,6 +66,7 @@ private:
     std::string assignedSaveFilename;
     std::time_t createdTime;
     std::time_t lastSavedTime;
+    bool autoAdvanceUi;
 
     bool ensureMinSize() const;
     void createWindows();
@@ -86,6 +89,9 @@ private:
     void showControlsPopup() const;
     void showScoreboardPopup() const;
     void showTileGuidePopup() const;
+    int findPlayerIndex(const Player& player) const;
+    bool isCpuPlayer(int playerIndex) const;
+    void showCpuThinking(int playerIndex, const std::string& action) const;
     void setupRules();
     void setupPlayers();
     void setupInvestments();

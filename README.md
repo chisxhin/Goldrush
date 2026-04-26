@@ -147,6 +147,8 @@ make clean
    - `Q` to quit
 3. For a new game, choose `Normal Mode` or `Custom Mode`.
 4. Enter player count and player names.
+   - each seat can be a human or CPU player
+   - CPU players support Easy, Normal, and Hard difficulty
 5. Review or skip the tutorial.
 6. During a turn:
    - press `Enter` to begin the turn
@@ -191,6 +193,7 @@ This means a loaded game resumes from the same state instead of rebuilding an ap
 - [board.hpp], [board.cpp]: board definition and rendering
 - [player.hpp], [player.cpp]: player data and worth calculation
 - [cards.hpp], [cards.cpp]: card models, deck setup, roll-based card behavior
+- [cpu_player.hpp], [cpu_player.cpp]: CPU player strategy, difficulty, and automated minigame results
 - [save_manager.hpp], [save_manager.cpp]: save-file listing, parsing, writing, duplicate archival
 - [ui.h], [ui.cpp]: color setup and shared UI drawing helpers
 - [rules.hpp], [rules.cpp]: rulesets and toggle presets

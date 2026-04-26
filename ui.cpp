@@ -179,7 +179,11 @@ void draw_sidebar_ui(WINDOW* panelWin,
         std::string invest = player.investedNumber > 0 ? std::to_string(player.investedNumber) : "-";
 
         wattron(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
-        mvwprintw(panelWin, 3, 2, "P%d %.12s [%c]", currentPlayer + 1, player.name.c_str(), player.token);
+        mvwprintw(panelWin, 3, 2, "P%d %.12s [%c] %s",
+                  currentPlayer + 1,
+                  player.name.c_str(),
+                  player.token,
+                  player.type == PlayerType::CPU ? "CPU" : "HUM");
         wattroff(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
 
         wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
@@ -187,6 +191,9 @@ void draw_sidebar_ui(WINDOW* panelWin,
         mvwprintw(panelWin, 6, 2, "K:%d P:%d I:%s", player.kids, static_cast<int>(player.petCards.size()), invest.c_str());
         mvwprintw(panelWin, 7, 2, "J:%-.18s", player.job.c_str());
         mvwprintw(panelWin, 8, 2, "Home:%-.12s", home.c_str());
+        if (player.type == PlayerType::CPU) {
+            mvwprintw(panelWin, 9, 2, "AI:%-.12s", cpuDifficultyLabel(player.cpuDifficulty).c_str());
+        }
         wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
     }
 

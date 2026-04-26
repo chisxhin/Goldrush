@@ -3,35 +3,52 @@
 #include <string>
 #include <vector>
 
+enum class PlayerType {
+    Human,
+    CPU
+};
+
+enum class CpuDifficulty {
+    Easy,
+    Normal,
+    Hard
+};
+
 struct Player {
     std::string name;
-    char token;
-    int tile;
-    int cash;
+    char token = 'A';
+    int tile = 0;
+    int cash = 0;
     std::string job;
-    int salary;
-    bool married;
-    int kids;
-    bool collegeGraduate;
-    bool usedNightSchool;
-    bool hasHouse;
+    int salary = 0;
+    bool married = false;
+    int kids = 0;
+    bool collegeGraduate = false;
+    bool usedNightSchool = false;
+    bool hasHouse = false;
     std::string houseName;
-    int houseValue;
-    int loans;
-    int investedNumber;
-    int investPayout;
-    int spinToWinTokens;
-    int retirementPlace;
-    int retirementBonus;
-    int finalHouseSaleValue;
+    int houseValue = 0;
+    int loans = 0;
+    int investedNumber = 0;
+    int investPayout = 0;
+    int spinToWinTokens = 0;
+    int retirementPlace = 0;
+    int retirementBonus = 0;
+    int finalHouseSaleValue = 0;
     std::string retirementHome;
     std::vector<std::string> actionCards;
     std::vector<std::string> petCards;
-    bool retired;
-    int startChoice;
-    int familyChoice;
-    int riskChoice;
+    bool retired = false;
+    int startChoice = -1;
+    int familyChoice = -1;
+    int riskChoice = -1;
+    PlayerType type = PlayerType::Human;
+    CpuDifficulty cpuDifficulty = CpuDifficulty::Normal;
 };
 
 char tokenForName(const std::string& name, int index);
 int totalWorth(const Player& player);
+std::string playerTypeLabel(PlayerType type);
+std::string cpuDifficultyLabel(CpuDifficulty difficulty);
+PlayerType playerTypeFromText(const std::string& text);
+CpuDifficulty cpuDifficultyFromText(const std::string& text);

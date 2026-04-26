@@ -364,6 +364,8 @@ Player makeDefaultPlayer(int index) {
     player.startChoice = -1;
     player.familyChoice = -1;
     player.riskChoice = -1;
+    player.type = PlayerType::Human;
+    player.cpuDifficulty = CpuDifficulty::Normal;
     return player;
 }
 
@@ -403,6 +405,8 @@ void writeDeckState(std::ofstream& out,
 
 void writePlayer(std::ofstream& out, const Player& player, int index) {
     out << "PLAYER\t" << index << "\tNAME\t" << escapeField(player.name) << "\n";
+    out << "PLAYER\t" << index << "\tTYPE\t" << playerTypeLabel(player.type) << "\n";
+    out << "PLAYER\t" << index << "\tCPU_DIFFICULTY\t" << cpuDifficultyLabel(player.cpuDifficulty) << "\n";
     out << "PLAYER\t" << index << "\tTOKEN\t" << escapeField(std::string(1, player.token)) << "\n";
     out << "PLAYER\t" << index << "\tTILE\t" << player.tile << "\n";
     out << "PLAYER\t" << index << "\tCASH\t" << player.cash << "\n";
@@ -474,6 +478,14 @@ bool parsePlayerField(Player& player,
     }
     if (field == "TOKEN") {
         player.token = value.empty() ? 'A' : value[0];
+        return true;
+    }
+    if (field == "TYPE") {
+        player.type = playerTypeFromText(value);
+        return true;
+    }
+    if (field == "CPU_DIFFICULTY") {
+        player.cpuDifficulty = cpuDifficultyFromText(value);
         return true;
     }
     if (field == "JOB") {

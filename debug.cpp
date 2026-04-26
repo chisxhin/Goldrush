@@ -4,6 +4,7 @@
 #include "battleship.hpp"
 #include "board.hpp"
 #include "cards.hpp"
+#include "cpu_player.hpp"
 #include "game.hpp"
 #include "hangman.hpp"
 #include "memory.hpp"
@@ -54,6 +55,8 @@ Player makeDebugPlayer(const std::string& name, int index) {
     player.startChoice = 1;
     player.familyChoice = 1;
     player.riskChoice = 0;
+    player.type = PlayerType::Human;
+    player.cpuDifficulty = CpuDifficulty::Normal;
     return player;
 }
 
@@ -429,33 +432,36 @@ void debugLoadSystem() {
 
 void debugCPUDecision() {
     std::cout << "\n===== CPU DECISION DEBUG =====\n";
-    std::cout << "No production CPU player strategy API exists yet, so this uses mock CPU inputs.\n";
+    std::cout << "Uses the production CpuController with mock player inputs.\n";
 
     RuleSet rules = makeNormalRules();
     RandomService rng(9001);
     DeckManager decks(rules, rng);
+    CpuController cpuController(rng);
     Player cpu = makeDebugPlayer("CPU Test", 1);
+    cpu.type = PlayerType::CPU;
     cpu.cash = readInt("CPU cash", 0, 500000, 75000);
     cpu.collegeGraduate = readInt("CPU has degree? 0 no, 1 yes", 0, 1, 0) == 1;
+    cpu.cpuDifficulty = static_cast<CpuDifficulty>(
+        readInt("Difficulty: 0 easy, 1 normal, 2 hard", 0, 2, 1));
 
-    const bool chooseCollege = cpu.cash >= 100000 && !cpu.collegeGraduate;
-    std::cout << "Mock start-route decision: " << (chooseCollege ? "College" : "Career") << "\n";
+    const bool chooseCollege = cpuController.chooseStartRoute(cpu, rules) == 0;
+    std::cout << "CPU start-route decision: " << (chooseCollege ? "College" : "Career") << "\n";
+    std::cout << "CPU family decision: "
+              << (cpuController.chooseFamilyRoute(cpu, rules) == 0 ? "Family" : "Life") << "\n";
+    std::cout << "CPU risk decision: "
+              << (cpuController.chooseRiskRoute(cpu, rules) == 0 ? "Safe" : "Risky") << "\n";
 
     const bool degreeCareer = chooseCollege || cpu.collegeGraduate;
     const std::vector<CareerCard> choices = decks.drawCareerChoices(degreeCareer, 2);
     if (choices.empty()) {
         std::cout << "Career deck returned no choices.\n";
     } else {
-        int bestIndex = 0;
-        for (std::size_t i = 1; i < choices.size(); ++i) {
-            if (choices[i].salary > choices[static_cast<std::size_t>(bestIndex)].salary) {
-                bestIndex = static_cast<int>(i);
-            }
-        }
+        const int pickedIndex = cpuController.chooseCareer(cpu, choices);
         for (std::size_t i = 0; i < choices.size(); ++i) {
             std::cout << "  Choice " << (i + 1) << ": " << choices[i].title
                       << " salary $" << choices[i].salary
-                      << (static_cast<int>(i) == bestIndex ? " <- mock CPU picks" : "")
+                      << (static_cast<int>(i) == pickedIndex ? " <- CPU picks" : "")
                       << "\n";
         }
     }

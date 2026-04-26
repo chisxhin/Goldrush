@@ -144,6 +144,7 @@ void drawPopupPulse(WINDOW* popup,
 Game::Game()
     : rules(makeNormalRules()),
       rng(),
+      cpu(rng),
       decks(rules, rng),
       bank(rules),
       history(6),
@@ -158,12 +159,14 @@ Game::Game()
       gameId(),
       assignedSaveFilename(),
       createdTime(0),
-      lastSavedTime(0) {
+      lastSavedTime(0),
+      autoAdvanceUi(false) {
 }
 
 Game::Game(std::uint32_t seed)
     : rules(makeNormalRules()),
       rng(seed),
+      cpu(rng),
       decks(rules, rng),
       bank(rules),
       history(6),
@@ -178,7 +181,8 @@ Game::Game(std::uint32_t seed)
       gameId(),
       assignedSaveFilename(),
       createdTime(0),
-      lastSavedTime(0) {
+      lastSavedTime(0),
+      autoAdvanceUi(false) {
 }
 
 Game::~Game() {
@@ -829,7 +833,7 @@ void Game::showScoreboardPopup() const {
     box(popup, 0, 0);
 
     drawPopupPulse(popup, 1, 2, "Scoreboard", GOLDRUSH_GOLD_SAND, hasColor);
-    mvwprintw(popup, 2, 2, "Rank  Player          Tile        Cash       Loans      Worth est.  Route");
+    mvwprintw(popup, 2, 2, "Rank  Player          Type      Tile        Cash       Loans      Worth est.  Route");
 
     std::vector<int> order;
     for (size_t i = 0; i < players.size(); ++i) {
@@ -847,6 +851,9 @@ void Game::showScoreboardPopup() const {
         const std::string name = clipMenuText(player.name, 14);
         const std::string tileText = std::to_string(player.tile) + " " + tile.label + " " + tileKindText(tile.kind);
         const std::string routeText = clipMenuText(playerRouteText(player), 24);
+        const std::string typeText = player.type == PlayerType::CPU
+            ? "CPU-" + cpuDifficultyLabel(player.cpuDifficulty)
+            : "Human";
 
         if (playerIndex == currentPlayerIndex) {
             wattron(popup, A_REVERSE);
@@ -854,9 +861,10 @@ void Game::showScoreboardPopup() const {
         mvwprintw(popup,
                   y,
                   2,
-                  "%-5d %-14s %-11s $%-9d %-10d $%-10d %-24s",
+                  "%-5d %-14s %-9s %-11s $%-9d %-10d $%-10d %-24s",
                   static_cast<int>(row + 1),
                   name.c_str(),
+                  clipMenuText(typeText, 9).c_str(),
                   clipMenuText(tileText, 11).c_str(),
                   player.cash,
                   player.loans,
@@ -903,6 +911,36 @@ void Game::showTileGuidePopup() const {
     delwin(popup);
 }
 
+int Game::findPlayerIndex(const Player& player) const {
+    for (size_t i = 0; i < players.size(); ++i) {
+        if (&players[i] == &player) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+bool Game::isCpuPlayer(int playerIndex) const {
+    return playerIndex >= 0 &&
+           playerIndex < static_cast<int>(players.size()) &&
+           players[static_cast<std::size_t>(playerIndex)].type == PlayerType::CPU;
+}
+
+void Game::showCpuThinking(int playerIndex, const std::string& action) const {
+    if (!isCpuPlayer(playerIndex) || !msgWin) {
+        return;
+    }
+
+    const Player& player = players[static_cast<std::size_t>(playerIndex)];
+    werase(msgWin);
+    box(msgWin, 0, 0);
+    mvwprintw(msgWin, 1, 2, "%s [%s CPU]", player.name.c_str(),
+              cpuDifficultyLabel(player.cpuDifficulty).c_str());
+    mvwprintw(msgWin, 2, 2, "%s", action.c_str());
+    wrefresh(msgWin);
+    napms(550);
+}
+
 void Game::setupRules() {
     SaveManager saveManager;
     decks.reset(rules);
@@ -939,13 +977,43 @@ void Game::setupPlayers() {
         drawSetupTitle();
         werase(msgWin);
         box(msgWin, 0, 0);
-        mvwprintw(msgWin, 1, 2, "Player %d name: ", i + 1);
+        mvwprintw(msgWin, 1, 2, "Player %d type (H human / C CPU): ", i + 1);
+        wrefresh(msgWin);
+        char typeBuf[8] = {0};
+        wgetnstr(msgWin, typeBuf, 7);
+
+        PlayerType playerType = playerTypeFromText(typeBuf);
+        CpuDifficulty difficulty = CpuDifficulty::Normal;
+        if (playerType == PlayerType::CPU) {
+            drawSetupTitle();
+            werase(msgWin);
+            box(msgWin, 0, 0);
+            mvwprintw(msgWin, 1, 2, "CPU %d difficulty (E easy / N normal / H hard): ", i + 1);
+            wrefresh(msgWin);
+            char diffBuf[8] = {0};
+            wgetnstr(msgWin, diffBuf, 7);
+            difficulty = cpuDifficultyFromText(diffBuf);
+        }
+
+        drawSetupTitle();
+        werase(msgWin);
+        box(msgWin, 0, 0);
+        if (playerType == PlayerType::CPU) {
+            mvwprintw(msgWin, 1, 2, "CPU %d name [CPU %d]: ", i + 1, i + 1);
+        } else {
+            mvwprintw(msgWin, 1, 2, "Player %d name: ", i + 1);
+        }
         wrefresh(msgWin);
         char nameBuf[32] = {0};
         wgetnstr(msgWin, nameBuf, 31);
 
         Player p;
         p.name = nameBuf;
+        if (p.name.empty()) {
+            p.name = playerType == PlayerType::CPU
+                ? "CPU " + std::to_string(i + 1)
+                : "Player " + std::to_string(i + 1);
+        }
         p.token = tokenForName(p.name, i);
         p.tile = 0;
         p.cash = 10000;
@@ -972,8 +1040,14 @@ void Game::setupPlayers() {
         p.startChoice = -1;
         p.familyChoice = -1;
         p.riskChoice = -1;
+        p.type = playerType;
+        p.cpuDifficulty = difficulty;
         players.push_back(p);
-        addHistory("Joined: " + p.name);
+        if (p.type == PlayerType::CPU) {
+            addHistory("Joined CPU: " + p.name + " (" + cpuDifficultyLabel(p.cpuDifficulty) + ")");
+        } else {
+            addHistory("Joined: " + p.name);
+        }
     }
 
     noecho();
@@ -991,6 +1065,11 @@ void Game::setupInvestments() {
 }
 
 int Game::waitForTurnCommand(int currentPlayer) {
+    if (isCpuPlayer(currentPlayer)) {
+        showCpuThinking(currentPlayer, "CPU is planning its turn...");
+        return '\n';
+    }
+
     while (true) {
         int ch = wgetch(infoWin);
         if (ch == KEY_RESIZE) {
@@ -1075,6 +1154,10 @@ void Game::showInfoPopup(const std::string& line1, const std::string& line2) con
     drawPopupPulse(msgWin, 1, 2, line1, GOLDRUSH_GOLD_SAND, hasColor);
     mvwprintw(msgWin, 2, 2, "%s", line2.c_str());
     wrefresh(msgWin);
+    if (autoAdvanceUi) {
+        napms(550);
+        return;
+    }
     waitForEnter(msgWin, 2, 2, "");
 }
 
@@ -1084,6 +1167,22 @@ int Game::rollSpinner(const std::string& title, const std::string& detail) {
     mvwprintw(msgWin, 1, 2, "%s", title.c_str());
     mvwprintw(msgWin, 2, 2, "%s", detail.c_str());
     wrefresh(msgWin);
+
+    if (autoAdvanceUi) {
+        int value = 1;
+        for (int flash = 0; flash < 6; ++flash) {
+            value = rng.roll10();
+            werase(msgWin);
+            box(msgWin, 0, 0);
+            mvwprintw(msgWin, 1, 2, "%s", title.c_str());
+            mvwprintw(msgWin, 2, 2, "CPU rolling: %d", value);
+            wrefresh(msgWin);
+            napms(90);
+        }
+        flashSpinResult(title, value);
+        addHistory("CPU auto-spin result: " + std::to_string(value));
+        return value;
+    }
 
     int ch;
     do {
@@ -1143,6 +1242,31 @@ void Game::playBlackTileMinigame(int playerIndex) {
     if (boardWin) touchwin(boardWin);
     if (infoWin) touchwin(infoWin);
     if (msgWin) touchwin(msgWin);
+
+    if (isCpuPlayer(playerIndex)) {
+        const CpuMinigameResult cpuResult = cpu.playBlackTileMinigame(player, minigameChoice);
+        const int payout = cpuResult.score * 100;
+        if (payout > 0) {
+            bank.credit(player, payout);
+        }
+
+        static const char* names[] = {
+            "Pong",
+            "Battleship",
+            "Hangman",
+            "Memory Match",
+            "Minesweeper"
+        };
+        const std::string minigameName = names[minigameChoice];
+        addHistory(player.name + " simulated " + minigameName + " and earned $" +
+                   std::to_string(payout));
+        renderGame(playerIndex,
+                   player.name + " completed CPU " + minigameName,
+                   cpuResult.summary + " | Earned $" + std::to_string(payout));
+        showInfoPopup("CPU BLACK TILE: " + minigameName,
+                      cpuResult.summary + " | Earned $" + std::to_string(payout));
+        return;
+    }
 
     //Player chooses PONG
     if (minigameChoice == 0) {
@@ -1548,10 +1672,14 @@ int Game::playActionCard(int playerIndex, const Tile& tile) {
     mvwprintw(popup, 10, 2, "Press ENTER");
     wrefresh(popup);
 
-    int ch;
-    do {
-        ch = wgetch(popup);
-    } while (ch != '\n' && ch != '\r' && ch != KEY_ENTER);
+    if (autoAdvanceUi) {
+        napms(750);
+    } else {
+        int ch;
+        do {
+            ch = wgetch(popup);
+        } while (ch != '\n' && ch != '\r' && ch != KEY_ENTER);
+    }
 
     delwin(popup);
     touchwin(msgWin);
@@ -1573,7 +1701,15 @@ void Game::chooseCareer(Player& player, bool requiresDegree) {
 
     int choice = 0;
     if (choices.size() > 1) {
-        choice = showBranchPopup(requiresDegree ? "Choose a college career" : "Choose a career", lines, 'A', 'B');
+        const int playerIndex = findPlayerIndex(player);
+        if (isCpuPlayer(playerIndex)) {
+            choice = cpu.chooseCareer(player, choices);
+            showCpuThinking(playerIndex,
+                            "Career choice: " + choices[static_cast<std::size_t>(choice)].title +
+                            " ($" + std::to_string(choices[static_cast<std::size_t>(choice)].salary) + ")");
+        } else {
+            choice = showBranchPopup(requiresDegree ? "Choose a college career" : "Choose a career", lines, 'A', 'B');
+        }
     }
 
     decks.resolveCareerChoices(requiresDegree, choices, choice);
@@ -1597,14 +1733,22 @@ void Game::resolveFamilyStop(Player& player) {
         return;
     }
 
-    int choice = showBranchPopup(
-        "Family or Life path?",
-        std::vector<std::string>{
-            "- Family path: babies and houses",
-            "- Life path: careers, safe/risky route"
-        },
-        'A',
-        'B');
+    const int playerIndex = findPlayerIndex(player);
+    int choice = 0;
+    if (isCpuPlayer(playerIndex)) {
+        choice = cpu.chooseFamilyRoute(player, rules);
+        showCpuThinking(playerIndex,
+                        choice == 0 ? "CPU chose Family path." : "CPU chose Life path.");
+    } else {
+        choice = showBranchPopup(
+            "Family or Life path?",
+            std::vector<std::string>{
+                "- Family path: babies and houses",
+                "- Life path: careers, safe/risky route"
+            },
+            'A',
+            'B');
+    }
     player.familyChoice = choice;
     addHistory(player.name + (choice == 0 ? " chose Family path" : " chose Life path"));
     showInfoPopup("Family STOP", choice == 0 ? "Family path selected." : "Life path selected.");
@@ -1621,14 +1765,22 @@ void Game::resolveNightSchool(Player& player) {
         return;
     }
 
-    int choice = showBranchPopup(
-        "Night School?",
-        std::vector<std::string>{
-            "- Pay $100000 to draw a new college career",
-            "- Keep your current career"
-        },
-        'A',
-        'B');
+    const int playerIndex = findPlayerIndex(player);
+    int choice = 0;
+    if (isCpuPlayer(playerIndex)) {
+        choice = cpu.chooseNightSchool(player, rules);
+        showCpuThinking(playerIndex,
+                        choice == 0 ? "CPU chose Night School." : "CPU kept current career.");
+    } else {
+        choice = showBranchPopup(
+            "Night School?",
+            std::vector<std::string>{
+                "- Pay $100000 to draw a new college career",
+                "- Keep your current career"
+            },
+            'A',
+            'B');
+    }
     if (choice == 0) {
         PaymentResult payment = bank.charge(player, 100000);
         player.usedNightSchool = true;
@@ -1689,14 +1841,21 @@ void Game::resolveRetirement(int playerIndex) {
         return;
     }
 
-    int choice = showBranchPopup(
-        "Choose retirement destination",
-        std::vector<std::string>{
-            "- Millionaire Mansion",
-            "- Countryside Acres"
-        },
-        'A',
-        'B');
+    int choice = 0;
+    if (isCpuPlayer(playerIndex)) {
+        choice = cpu.chooseRetirement(player);
+        showCpuThinking(playerIndex,
+                        choice == 0 ? "CPU chose Millionaire Mansion." : "CPU chose Countryside Acres.");
+    } else {
+        choice = showBranchPopup(
+            "Choose retirement destination",
+            std::vector<std::string>{
+                "- Millionaire Mansion",
+                "- Countryside Acres"
+            },
+            'A',
+            'B');
+    }
 
     player.retired = true;
     player.retirementHome = choice == 0 ? "MM" : "CA";
@@ -1850,14 +2009,21 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
                 addHistory(player.name + " defaults to the Safe route");
                 showInfoPopup("Risk split", "Risky route is disabled. Safe route selected.");
             } else {
-                int riskChoice = showBranchPopup(
-                    "Safe or Risky route?",
-                    std::vector<std::string>{
-                        "- Safe route: smaller payout, no huge swings",
-                        "- Risky route: bigger wins and losses"
-                    },
-                    'A',
-                    'B');
+                int riskChoice = 0;
+                if (isCpuPlayer(playerIndex)) {
+                    riskChoice = cpu.chooseRiskRoute(player, rules);
+                    showCpuThinking(playerIndex,
+                                    riskChoice == 0 ? "CPU chose Safe route." : "CPU chose Risky route.");
+                } else {
+                    riskChoice = showBranchPopup(
+                        "Safe or Risky route?",
+                        std::vector<std::string>{
+                            "- Safe route: smaller payout, no huge swings",
+                            "- Risky route: bigger wins and losses"
+                        },
+                        'A',
+                        'B');
+                }
                 player.riskChoice = riskChoice;
                 addHistory(player.name + (riskChoice == 0 ? " chose Safe route" : " chose Risky route"));
                 showInfoPopup("Risk split", riskChoice == 0 ? "Safe route selected." : "Risky route selected.");
@@ -1907,14 +2073,22 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
 
 int Game::chooseNextTile(Player& player, const Tile& tile) {
     if (tile.kind == TILE_SPLIT_START && player.startChoice == -1) {
-        int c = showBranchPopup(
-            "College or Career?",
-            std::vector<std::string>{
-                "- College: pay $100000 now, stronger jobs later",
-                "- Career: choose a job right away"
-            },
-            'A',
-            'B');
+        const int playerIndex = findPlayerIndex(player);
+        int c = 0;
+        if (isCpuPlayer(playerIndex)) {
+            c = cpu.chooseStartRoute(player, rules);
+            showCpuThinking(playerIndex,
+                            c == 0 ? "CPU chose College route." : "CPU chose Career route.");
+        } else {
+            c = showBranchPopup(
+                "College or Career?",
+                std::vector<std::string>{
+                    "- College: pay $100000 now, stronger jobs later",
+                    "- Career: choose a job right away"
+                },
+                'A',
+                'B');
+        }
         player.startChoice = c;
         if (c == 0) {
             PaymentResult payment = bank.charge(player, 100000);
@@ -1997,6 +2171,8 @@ bool Game::allPlayersRetired() const {
 void Game::finalizeScoring() {
     for (size_t i = 0; i < players.size(); ++i) {
         Player& player = players[i];
+        const bool previousAutoAdvance = autoAdvanceUi;
+        autoAdvanceUi = isCpuPlayer(static_cast<int>(i));
         if (player.hasHouse) {
             if (rules.toggles.houseSaleSpinEnabled) {
                 int spin = rollSpinner(player.name + " house sale", "Spin to sell your house");
@@ -2023,6 +2199,7 @@ void Game::finalizeScoring() {
               << " + retire $" << player.retirementBonus
               << " - loans $" << loanPenalty;
         showInfoPopup(line1.str(), line2.str());
+        autoAdvanceUi = previousAutoAdvance;
     }
 }
 
@@ -2100,7 +2277,9 @@ bool Game::run() {
             continue;
         }
 
+        autoAdvanceUi = isCpuPlayer(currentPlayerIndex);
         takeMovementSpin(currentPlayerIndex, "Movement Spin");
+        autoAdvanceUi = false;
         ++turnCounter;
         currentPlayerIndex = (currentPlayerIndex + 1) % static_cast<int>(players.size());
     }
