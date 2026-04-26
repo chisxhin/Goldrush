@@ -84,6 +84,8 @@ private:
     bool configureCustomRules();
     void showTutorial();
     void showControlsPopup() const;
+    void showScoreboardPopup() const;
+    void showTileGuidePopup() const;
     void setupRules();
     void setupPlayers();
     void setupInvestments();

@@ -78,6 +78,36 @@ void resetBall(Ball& ball, float startX, float startY, int direction) {
     ball.vx = 0.55f * static_cast<float>(direction);
     ball.vy = 0.28f;
 }
+
+void drawFeedbackBanner(WINDOW* win,
+                        int y,
+                        int arenaLeft,
+                        int arenaWidth,
+                        const std::string& text,
+                        bool positive,
+                        bool hasColor) {
+    if (text.empty()) {
+        return;
+    }
+
+    const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
+    const int attrs = A_BOLD | A_BLINK;
+    if (hasColor) {
+        wattron(win, COLOR_PAIR(colorPair) | attrs);
+    } else {
+        wattron(win, A_REVERSE | A_BOLD);
+    }
+    mvwprintw(win,
+              y,
+              arenaLeft + (arenaWidth - static_cast<int>(text.size())) / 2,
+              "%s",
+              text.c_str());
+    if (hasColor) {
+        wattroff(win, COLOR_PAIR(colorPair) | attrs);
+    } else {
+        wattroff(win, A_REVERSE | A_BOLD);
+    }
+}
 }
 
 PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor) {
@@ -121,6 +151,9 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
 
     bool waitingForServe = true;
     bool gameOver = false;
+    std::string feedbackText;
+    int feedbackFrames = 0;
+    bool feedbackPositive = true;
 
     while (true) {
         werase(overlay);
@@ -131,6 +164,18 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
             playerName + " vs CPU  |  One life  |  Score x $100 payout";
         mvwprintw(overlay, 7, (screenW - static_cast<int>(statusLine.size())) / 2,
                   "%s", statusLine.c_str());
+        if (feedbackFrames > 0) {
+            drawFeedbackBanner(overlay,
+                               arenaTop + 2,
+                               arenaLeft,
+                               arenaWidth,
+                               feedbackText,
+                               feedbackPositive,
+                               hasColor);
+            if (!gameOver) {
+                --feedbackFrames;
+            }
+        }
 
         if (hasColor) {
             wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
@@ -250,6 +295,9 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
             ++result.playerScore;
             ball.vx = std::fabs(ball.vx) + 0.03f;
             ball.vy += (ball.y - playerPaddle.centerY) * 0.08f;
+            feedbackText = "RETURN! +$100";
+            feedbackFrames = 26;
+            feedbackPositive = true;
         }
 
         const float cpuTop = cpuPaddle.centerY - static_cast<float>(paddleHalfHeight);
@@ -265,7 +313,13 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
         if (ball.x < static_cast<float>(arenaLeft + 1)) {
             ++result.cpuScore;
             gameOver = true;
+            feedbackText = "MISS! RUN ENDS";
+            feedbackFrames = 9999;
+            feedbackPositive = false;
         } else if (ball.x > static_cast<float>(arenaRight - 1)) {
+            feedbackText = "CPU MISSED - SERVE AGAIN";
+            feedbackFrames = 34;
+            feedbackPositive = true;
             resetBall(ball,
                       static_cast<float>(arenaLeft + arenaWidth / 2),
                       static_cast<float>((arenaTop + arenaBottom) / 2),

@@ -247,6 +247,38 @@ void drawAsciiTitle(WINDOW* win, int screenW, bool hasColor) {
     }
 }
 
+void flashFeedback(WINDOW* win,
+                   int y,
+                   int arenaLeft,
+                   int arenaWidth,
+                   const std::string& text,
+                   bool positive,
+                   bool hasColor) {
+    const int lineWidth = arenaWidth - 6;
+    const int x = arenaLeft + 3;
+    const int textX = arenaLeft + (arenaWidth - static_cast<int>(text.size())) / 2;
+    const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
+
+    for (int flash = 0; flash < 4; ++flash) {
+        mvwprintw(win, y, x, "%-*s", lineWidth, "");
+        if (flash % 2 == 0) {
+            if (hasColor) {
+                wattron(win, COLOR_PAIR(colorPair) | A_BOLD | A_BLINK);
+            } else {
+                wattron(win, A_REVERSE | A_BOLD);
+            }
+            mvwprintw(win, y, textX, "%s", text.c_str());
+            if (hasColor) {
+                wattroff(win, COLOR_PAIR(colorPair) | A_BOLD | A_BLINK);
+            } else {
+                wattroff(win, A_REVERSE | A_BOLD);
+            }
+        }
+        wrefresh(win);
+        napms(110);
+    }
+}
+
 } // anonymous namespace
 
 HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) {
@@ -363,8 +395,10 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
             const std::string winLine3 = "Letters revealed: " + std::to_string(res.lettersGuessed) +
                                          "  |  Earned $" + std::to_string(res.lettersGuessed * 100);
             const std::string winLine4 = "Press ENTER to continue.";
+            wattron(win, A_BLINK);
             mvwprintw(win, arenaCenterY - 2, arenaLeft + (arenaWidth - static_cast<int>(winLine1.size())) / 2,
                       "%s", winLine1.c_str());
+            wattroff(win, A_BLINK);
             mvwprintw(win, arenaCenterY - 1, arenaLeft + (arenaWidth - static_cast<int>(winLine2.size())) / 2,
                       "%s", winLine2.c_str());
             mvwprintw(win, arenaCenterY, arenaLeft + (arenaWidth - static_cast<int>(winLine3.size())) / 2,
@@ -409,8 +443,10 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
             const std::string loseLine3 = "Letters revealed: " + std::to_string(res.lettersGuessed) +
                                           "  |  Earned $" + std::to_string(res.lettersGuessed * 100);
             const std::string loseLine4 = "Press ENTER to continue.";
+            wattron(win, A_BLINK);
             mvwprintw(win, arenaCenterY - 2, arenaLeft + (arenaWidth - static_cast<int>(loseLine1.size())) / 2,
                       "%s", loseLine1.c_str());
+            wattroff(win, A_BLINK);
             mvwprintw(win, arenaCenterY - 1, arenaLeft + (arenaWidth - static_cast<int>(loseLine2.size())) / 2,
                       "%s", loseLine2.c_str());
             mvwprintw(win, arenaCenterY, arenaLeft + (arenaWidth - static_cast<int>(loseLine3.size())) / 2,
@@ -446,31 +482,46 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
             int idx = ch - 'A';
 
             if (guessed[idx] != ' ') {
-                if (hasColor) {
-                    wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_TERRA));
-                }
-                mvwprintw(win, arenaBottom - 1, arenaLeft + 3, "Already guessed '%c'!            ", ch);
-                if (hasColor) {
-                    wattroff(win, COLOR_PAIR(GOLDRUSH_GOLD_TERRA));
-                }
-                wrefresh(win);
-                napms(800);
+                flashFeedback(win,
+                              arenaBottom - 1,
+                              arenaLeft,
+                              arenaWidth,
+                              "Already guessed '" + std::string(1, static_cast<char>(ch)) + "'!",
+                              false,
+                              hasColor);
                 continue;
             }
 
             guessed[idx] = static_cast<char>(ch);
 
             bool found = false;
+            int revealedThisGuess = 0;
             for (size_t i = 0; i < word.size(); i++) {
                 if (word[i] == ch) {
                     disp[i] = static_cast<char>(ch);
                     res.lettersGuessed++;
+                    revealedThisGuess++;
                     found = true;
                 }
             }
             
             if (!found) {
                 wrong++;
+                flashFeedback(win,
+                              arenaBottom - 1,
+                              arenaLeft,
+                              arenaWidth,
+                              "MISS! Attempts left: " + std::to_string(10 - wrong),
+                              false,
+                              hasColor);
+            } else {
+                flashFeedback(win,
+                              arenaBottom - 1,
+                              arenaLeft,
+                              arenaWidth,
+                              "CORRECT! +$" + std::to_string(revealedThisGuess * 100),
+                              true,
+                              hasColor);
             }
         }
     }

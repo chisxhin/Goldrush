@@ -67,6 +67,78 @@ std::string saveMenuStatusText(const SaveFileInfo& info) {
     }
     return "Legacy save without a persistent game ID.";
 }
+
+std::string tileKindText(TileKind kind) {
+    switch (kind) {
+        case TILE_BLACK: return "Action";
+        case TILE_START: return "Start";
+        case TILE_SPLIT_START: return "Start split";
+        case TILE_COLLEGE: return "College";
+        case TILE_CAREER: return "Career";
+        case TILE_GRADUATION: return "Graduation";
+        case TILE_MARRIAGE: return "Marriage";
+        case TILE_SPLIT_FAMILY: return "Family split";
+        case TILE_FAMILY: return "Family";
+        case TILE_NIGHT_SCHOOL: return "Night School";
+        case TILE_SPLIT_RISK: return "Risk split";
+        case TILE_SAFE: return "Safe";
+        case TILE_RISKY: return "Risky";
+        case TILE_SPIN_AGAIN: return "Spin Again";
+        case TILE_CAREER_2: return "Promotion";
+        case TILE_PAYDAY: return "Payday";
+        case TILE_BABY: return "Baby";
+        case TILE_RETIREMENT: return "Retirement";
+        case TILE_HOUSE: return "House";
+        case TILE_EMPTY:
+        default:
+            return "Open road";
+    }
+}
+
+std::string playerRouteText(const Player& player) {
+    std::string route;
+    if (player.startChoice == 0) {
+        route = "College";
+    } else if (player.startChoice == 1) {
+        route = "Career";
+    } else {
+        route = "Undecided";
+    }
+
+    if (player.familyChoice == 0) {
+        route += " / Family";
+    } else if (player.familyChoice == 1) {
+        route += " / Life";
+    }
+
+    if (player.riskChoice == 0) {
+        route += " / Safe";
+    } else if (player.riskChoice == 1) {
+        route += " / Risky";
+    }
+
+    return route;
+}
+
+void drawPopupPulse(WINDOW* popup,
+                    int y,
+                    int x,
+                    const std::string& text,
+                    int colorPair,
+                    bool hasColor) {
+    const int attrs = A_BOLD | A_BLINK;
+    if (hasColor) {
+        wattron(popup, COLOR_PAIR(colorPair) | attrs);
+    } else {
+        wattron(popup, A_REVERSE | A_BOLD);
+    }
+    mvwprintw(popup, y, x, "%s", text.c_str());
+    if (hasColor) {
+        wattroff(popup, COLOR_PAIR(colorPair) | attrs);
+    } else {
+        wattroff(popup, A_REVERSE | A_BOLD);
+    }
+}
 }
 
 Game::Game()
@@ -681,9 +753,11 @@ void Game::showTutorial() {
     pages[0].push_back("Spinner rolls move your car from Start to Retirement.");
     pages[0].push_back("STOP spaces end movement immediately and resolve on the spot.");
     pages[0].push_back("College/Career, Family/Life, and Safe/Risky are branch decisions.");
+    pages[0].push_back("Choosing College charges tuition immediately before that route begins.");
     pages[0].push_back("Paydays add salary. Action cards shake up your money.");
     pages[0].push_back("Marriage, babies, and house sales use special event spins.");
     pages[0].push_back("Retirement lets you choose MM or CA and awards order bonuses.");
+    pages[0].push_back("During turns: TAB scoreboard, G tile guide, K controls.");
 
     std::vector<std::string> legend = board.tutorialLegend();
     pages.push_back(std::vector<std::string>(legend.begin(), legend.begin() + 9));
@@ -725,21 +799,107 @@ void Game::showTutorial() {
 void Game::showControlsPopup() const {
     int h, w;
     getmaxyx(stdscr, h, w);
-    WINDOW* popup = newwin(13, 66, (h - 13) / 2, (w - 66) / 2);
+    WINDOW* popup = newwin(15, 70, (h - 15) / 2, (w - 70) / 2);
     applyWindowBg(popup);
     box(popup, 0, 0);
     mvwprintw(popup, 1, 2, "Controls");
     mvwprintw(popup, 3, 2, "ENTER  Confirm a menu or start your turn spin");
     mvwprintw(popup, 4, 2, "SPACE  Hold/release to spin the wheel");
     mvwprintw(popup, 5, 2, "UP/DN  Move through menus and custom mode toggles");
-    mvwprintw(popup, 6, 2, "S      Save the current game");
-    mvwprintw(popup, 7, 2, "K/?    Open this controls popup");
-    mvwprintw(popup, 8, 2, "Q      Quit the game");
-    mvwprintw(popup, 9, 2, "STOP spaces end movement immediately.");
-    mvwprintw(popup, 10, 2, "Safe/Risky and retirement choices are prompted when needed.");
-    mvwprintw(popup, 11, 2, "Press ENTER");
+    mvwprintw(popup, 6, 2, "TAB    Open the player scoreboard");
+    mvwprintw(popup, 7, 2, "G      Open the tile abbreviation guide");
+    mvwprintw(popup, 8, 2, "S      Save the current game");
+    mvwprintw(popup, 9, 2, "K/?    Open this controls popup");
+    mvwprintw(popup, 10, 2, "Q      Quit the game");
+    mvwprintw(popup, 11, 2, "STOP spaces end movement immediately.");
+    mvwprintw(popup, 12, 2, "College tuition is paid as soon as College route is chosen.");
+    mvwprintw(popup, 13, 2, "Press ENTER");
     wrefresh(popup);
-    waitForEnter(popup, 11, 15, "");
+    waitForEnter(popup, 13, 15, "");
+    delwin(popup);
+}
+
+void Game::showScoreboardPopup() const {
+    int h, w;
+    getmaxyx(stdscr, h, w);
+    const int popupH = 16;
+    const int popupW = 104;
+    WINDOW* popup = newwin(popupH, popupW, (h - popupH) / 2, (w - popupW) / 2);
+    applyWindowBg(popup);
+    box(popup, 0, 0);
+
+    drawPopupPulse(popup, 1, 2, "Scoreboard", GOLDRUSH_GOLD_SAND, hasColor);
+    mvwprintw(popup, 2, 2, "Rank  Player          Tile        Cash       Loans      Worth est.  Route");
+
+    std::vector<int> order;
+    for (size_t i = 0; i < players.size(); ++i) {
+        order.push_back(static_cast<int>(i));
+    }
+    std::sort(order.begin(), order.end(), [this](int a, int b) {
+        return calculateFinalWorth(players[a]) > calculateFinalWorth(players[b]);
+    });
+
+    for (size_t row = 0; row < order.size(); ++row) {
+        const int playerIndex = order[row];
+        const Player& player = players[static_cast<std::size_t>(playerIndex)];
+        const Tile& tile = board.tileAt(player.tile);
+        const int y = 4 + static_cast<int>(row);
+        const std::string name = clipMenuText(player.name, 14);
+        const std::string tileText = std::to_string(player.tile) + " " + tile.label + " " + tileKindText(tile.kind);
+        const std::string routeText = clipMenuText(playerRouteText(player), 24);
+
+        if (playerIndex == currentPlayerIndex) {
+            wattron(popup, A_REVERSE);
+        }
+        mvwprintw(popup,
+                  y,
+                  2,
+                  "%-5d %-14s %-11s $%-9d %-10d $%-10d %-24s",
+                  static_cast<int>(row + 1),
+                  name.c_str(),
+                  clipMenuText(tileText, 11).c_str(),
+                  player.cash,
+                  player.loans,
+                  calculateFinalWorth(player),
+                  routeText.c_str());
+        if (playerIndex == currentPlayerIndex) {
+            wattroff(popup, A_REVERSE);
+        }
+    }
+
+    mvwprintw(popup, popupH - 4, 2, "Highlighted row is the current turn. Worth estimate includes loans and visible assets.");
+    mvwprintw(popup, popupH - 3, 2, "Current turn: %s on tile %d [%s]",
+              players[currentPlayerIndex].name.c_str(),
+              players[currentPlayerIndex].tile,
+              board.tileAt(players[currentPlayerIndex].tile).label.c_str());
+    mvwprintw(popup, popupH - 2, 2, "Press ENTER");
+    wrefresh(popup);
+    waitForEnter(popup, popupH - 2, 15, "");
+    delwin(popup);
+}
+
+void Game::showTileGuidePopup() const {
+    int h, w;
+    getmaxyx(stdscr, h, w);
+    const std::vector<std::string> legend = board.tutorialLegend();
+    const int popupH = 24;
+    const int popupW = 82;
+    WINDOW* popup = newwin(popupH, popupW, (h - popupH) / 2, (w - popupW) / 2);
+    applyWindowBg(popup);
+    box(popup, 0, 0);
+
+    drawPopupPulse(popup, 1, 2, "Quick Tutorial: Tile Guide", GOLDRUSH_GOLD_SAND, hasColor);
+    mvwprintw(popup, 2, 2, "Board abbreviations");
+
+    for (size_t i = 0; i < legend.size(); ++i) {
+        const int columnX = i < 10 ? 2 : 41;
+        const int rowY = 4 + static_cast<int>(i % 10);
+        mvwprintw(popup, rowY, columnX, "%s", legend[i].c_str());
+    }
+
+    mvwprintw(popup, popupH - 2, 2, "Press ENTER");
+    wrefresh(popup);
+    waitForEnter(popup, popupH - 2, 15, "");
     delwin(popup);
 }
 
@@ -841,14 +1001,28 @@ int Game::waitForTurnCommand(int currentPlayer) {
             createWindows();
             renderGame(currentPlayer,
                        players[currentPlayer].name + "'s turn",
-                       "ENTER spin | S save | K keys | Q quit/save");
+                       "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
             continue;
         }
         if (ch == 'q' || ch == 'Q') return ch;
         if (ch == 's' || ch == 'S') return ch;
+        if (ch == '\t') {
+            showScoreboardPopup();
+            renderGame(currentPlayer,
+                       players[currentPlayer].name + "'s turn",
+                       "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
+            continue;
+        }
+        if (ch == 'g' || ch == 'G') {
+            showTileGuidePopup();
+            renderGame(currentPlayer,
+                       players[currentPlayer].name + "'s turn",
+                       "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
+            continue;
+        }
         if (ch == 'k' || ch == 'K' || ch == '?') {
             showControlsPopup();
-            renderGame(currentPlayer, players[currentPlayer].name + "'s turn", "ENTER spin | S save | K keys | Q quit/save");
+            renderGame(currentPlayer, players[currentPlayer].name + "'s turn", "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
             continue;
         }
         if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
@@ -884,9 +1058,21 @@ int Game::maxRewardForTier(int tier) const {
 }
 
 void Game::showInfoPopup(const std::string& line1, const std::string& line2) const {
+    for (int flash = 0; flash < 3; ++flash) {
+        werase(msgWin);
+        box(msgWin, 0, 0);
+        if (flash % 2 == 0) {
+            drawPopupPulse(msgWin, 1, 2, line1, GOLDRUSH_GOLD_SAND, hasColor);
+        } else {
+            mvwprintw(msgWin, 1, 2, "%s", line1.c_str());
+        }
+        mvwprintw(msgWin, 2, 2, "%s", line2.c_str());
+        wrefresh(msgWin);
+        napms(85);
+    }
     werase(msgWin);
     box(msgWin, 0, 0);
-    mvwprintw(msgWin, 1, 2, "%s", line1.c_str());
+    drawPopupPulse(msgWin, 1, 2, line1, GOLDRUSH_GOLD_SAND, hasColor);
     mvwprintw(msgWin, 2, 2, "%s", line2.c_str());
     wrefresh(msgWin);
     waitForEnter(msgWin, 2, 2, "");
@@ -1141,6 +1327,8 @@ void Game::playBlackTileMinigame(int playerIndex) {
         summary << "Safe tiles: " << result.safeTilesRevealed << "/" << minesweeperSafeTileTotal;
         if (result.hitBomb) {
             summary << " | Bomb hit";
+        } else if (result.safeTilesRevealed >= minesweeperSafeTileTotal) {
+            summary << " | Board cleared";
         } else {
             summary << " | Time up";
         }
@@ -1348,7 +1536,13 @@ int Game::playActionCard(int playerIndex, const Tile& tile) {
     if (!branchText.empty()) {
         mvwprintw(popup, 6, 2, "Branch: %s", branchText.c_str());
     }
-    mvwprintw(popup, 7, 2, "Result: %s", result.c_str());
+    if (amount > 0) {
+        drawPopupPulse(popup, 7, 2, "Result: " + result, GOLDRUSH_BLACK_FOREST, hasColor);
+    } else if (amount < 0) {
+        drawPopupPulse(popup, 7, 2, "Result: " + result, GOLDRUSH_GOLD_TERRA, hasColor);
+    } else {
+        mvwprintw(popup, 7, 2, "Result: %s", result.c_str());
+    }
     mvwprintw(popup, 8, 2, "%s", card.keepAfterUse ? "Kept for endgame scoring." : "Discarded after use.");
     mvwprintw(popup, 9, 2, "Cash now: $%d  Loans: %d", player.cash, player.loans);
     mvwprintw(popup, 10, 2, "Press ENTER");
@@ -1619,10 +1813,15 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
             playBlackTileMinigame(playerIndex);
             return;
         case TILE_COLLEGE: {
-            PaymentResult payment = bank.charge(player, 100000);
             player.collegeGraduate = false;
-            line = appendLoanText("COLLEGE: tuition/loan cost $100000.", payment);
-            addHistory(appendLoanText(player.name + " entered college", payment));
+            if (player.startChoice == 0) {
+                line = "COLLEGE: tuition was paid when this route was chosen.";
+                addHistory(player.name + " entered college");
+            } else {
+                PaymentResult payment = bank.charge(player, 100000);
+                line = appendLoanText("COLLEGE: tuition/loan cost $100000.", payment);
+                addHistory(appendLoanText(player.name + " entered college", payment));
+            }
             break;
         }
         case TILE_CAREER:
@@ -1711,13 +1910,21 @@ int Game::chooseNextTile(Player& player, const Tile& tile) {
         int c = showBranchPopup(
             "College or Career?",
             std::vector<std::string>{
-                "- College: debt now, stronger jobs later",
+                "- College: pay $100000 now, stronger jobs later",
                 "- Career: choose a job right away"
             },
             'A',
             'B');
         player.startChoice = c;
-        addHistory(player.name + (c == 0 ? " chose College" : " chose Career"));
+        if (c == 0) {
+            PaymentResult payment = bank.charge(player, 100000);
+            player.collegeGraduate = false;
+            addHistory(appendLoanText(player.name + " chose College and paid $100000", payment));
+            showInfoPopup("College route",
+                          appendLoanText("Tuition paid before moving onto CO.", payment));
+        } else {
+            addHistory(player.name + " chose Career");
+        }
     }
 
     if (tile.kind == TILE_SPLIT_FAMILY) {
@@ -1866,7 +2073,7 @@ bool Game::run() {
 
         renderGame(currentPlayerIndex,
                    players[currentPlayerIndex].name + "'s turn",
-                   "ENTER spin | S save | K keys | Q quit/save");
+                   "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
         int command = waitForTurnCommand(currentPlayerIndex);
         if (command == 'q' || command == 'Q') {
             const int quitChoice = showBranchPopup(
@@ -1883,7 +2090,7 @@ bool Game::run() {
                 }
                 renderGame(currentPlayerIndex,
                            players[currentPlayerIndex].name + "'s turn",
-                           "ENTER spin | S save | K keys | Q quit/save");
+                           "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
                 continue;
             }
             return false;

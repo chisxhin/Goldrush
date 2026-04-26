@@ -119,8 +119,44 @@ void draw_title_banner_ui(WINDOW* titleWin) {
 }
 
 void draw_board_ui(WINDOW* boardWin, const Board& board, const std::vector<Player>& players, int highlightedTile) {
-    (void)highlightedTile;
     board.render(boardWin, players, has_colors());
+    if (highlightedTile >= 0 && highlightedTile < TILE_COUNT) {
+        const Tile& tile = board.tileAt(highlightedTile);
+        int maxY = 0;
+        int maxX = 0;
+        getmaxyx(boardWin, maxY, maxX);
+
+        const int leftMarkerX = tile.x;
+        const int rightMarkerX = tile.x + 3;
+        int pointerY = tile.y + 1;
+        chtype pointerChar = '^';
+        if (pointerY >= maxY - 1) {
+            pointerY = tile.y - 1;
+            pointerChar = 'v';
+        }
+
+        const int attrs = A_BOLD | A_BLINK;
+        if (has_colors()) {
+            wattron(boardWin, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | attrs);
+        } else {
+            wattron(boardWin, A_REVERSE | A_BOLD);
+        }
+
+        if (leftMarkerX > 0 && rightMarkerX < maxX - 1) {
+            mvwaddch(boardWin, tile.y, leftMarkerX, '<');
+            mvwaddch(boardWin, tile.y, rightMarkerX, '>');
+        }
+        if (pointerY > 0 && pointerY < maxY - 1 && tile.x + 2 < maxX - 1) {
+            mvwaddch(boardWin, pointerY, tile.x + 2, pointerChar);
+        }
+
+        if (has_colors()) {
+            wattroff(boardWin, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | attrs);
+        } else {
+            wattroff(boardWin, A_REVERSE | A_BOLD);
+        }
+        wrefresh(boardWin);
+    }
 }
 
 void draw_sidebar_ui(WINDOW* panelWin,

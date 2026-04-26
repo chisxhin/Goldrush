@@ -102,6 +102,35 @@ void drawAsciiTitle(WINDOW* win, int screenW, bool hasColor) {
     }
 }
 
+void flashFeedback(WINDOW* win,
+                   int y,
+                   int screenW,
+                   const std::string& text,
+                   bool positive,
+                   bool hasColor) {
+    const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
+    const int textX = (screenW - static_cast<int>(text.size())) / 2;
+
+    for (int flash = 0; flash < 4; ++flash) {
+        mvwprintw(win, y, 2, "%-*s", screenW - 4, "");
+        if (flash % 2 == 0) {
+            if (hasColor) {
+                wattron(win, COLOR_PAIR(colorPair) | A_BOLD | A_BLINK);
+            } else {
+                wattron(win, A_REVERSE | A_BOLD);
+            }
+            mvwprintw(win, y, textX, "%s", text.c_str());
+            if (hasColor) {
+                wattroff(win, COLOR_PAIR(colorPair) | A_BOLD | A_BLINK);
+            } else {
+                wattroff(win, A_REVERSE | A_BOLD);
+            }
+        }
+        wrefresh(win);
+        napms(120);
+    }
+}
+
 } // anonymous namespace
 
 MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool hasColor) {
@@ -280,9 +309,20 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
                         grid[firstMatchIdx].matched = true;
                         grid[cellIdx].matched = true;
                         result.pairsMatched++;
+                        flashFeedback(overlay,
+                                      arenaBottom - 4,
+                                      screenW,
+                                      "MATCH! +$100",
+                                      true,
+                                      hasColor);
                     } else {
                         result.livesRemaining--;
-                        napms(800);
+                        flashFeedback(overlay,
+                                      arenaBottom - 4,
+                                      screenW,
+                                      "NO MATCH! -1 life",
+                                      false,
+                                      hasColor);
                         grid[firstMatchIdx].revealed = false;
                         grid[cellIdx].revealed = false;
                     }
@@ -323,7 +363,9 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
     
     if (result.won) {
         if (hasColor) wattron(overlay, COLOR_PAIR(GOLDRUSH_BLACK_FOREST) | A_BOLD);
+        wattron(overlay, A_BLINK);
         mvwprintw(overlay, screenH/2 - 2, (screenW - 30) / 2, "VICTORY!");
+        wattroff(overlay, A_BLINK);
         mvwprintw(overlay, screenH/2 - 1, (screenW - 50) / 2, "You matched all %d pairs!", TOTAL_PAIRS);
         mvwprintw(overlay, screenH/2, (screenW - 46) / 2, "Lives remaining: %d  |  Earned $1000", result.livesRemaining);
         if (hasColor) wattroff(overlay, COLOR_PAIR(GOLDRUSH_BLACK_FOREST) | A_BOLD);
@@ -331,7 +373,9 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
         mvwprintw(overlay, screenH/2 - 1, (screenW - 30) / 2, "Game abandoned.");
     } else {
         if (hasColor) wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_TERRA) | A_BOLD);
+        wattron(overlay, A_BLINK);
         mvwprintw(overlay, screenH/2 - 2, (screenW - 30) / 2, "GAME OVER!");
+        wattroff(overlay, A_BLINK);
         mvwprintw(overlay, screenH/2 - 1, (screenW - 45) / 2, "You ran out of lives!");
         mvwprintw(overlay, screenH/2, (screenW - 46) / 2, "Pairs matched: %d/8  |  Earned $%d", result.pairsMatched, result.pairsMatched * 100);
         if (hasColor) wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_TERRA) | A_BOLD);

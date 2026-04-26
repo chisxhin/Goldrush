@@ -85,6 +85,36 @@ void drawPlayerShip(WINDOW* win, int y, int x, bool hasColor) {
         wattroff(win, COLOR_PAIR(GOLDRUSH_BLACK_FOREST) | A_BOLD);
     }
 }
+
+void drawFeedbackBanner(WINDOW* win,
+                        int y,
+                        int arenaLeft,
+                        int arenaWidth,
+                        const std::string& text,
+                        bool positive,
+                        bool hasColor) {
+    if (text.empty()) {
+        return;
+    }
+
+    const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
+    const int attrs = A_BOLD | A_BLINK;
+    if (hasColor) {
+        wattron(win, COLOR_PAIR(colorPair) | attrs);
+    } else {
+        wattron(win, A_REVERSE | A_BOLD);
+    }
+    mvwprintw(win,
+              y,
+              arenaLeft + (arenaWidth - static_cast<int>(text.size())) / 2,
+              "%s",
+              text.c_str());
+    if (hasColor) {
+        wattroff(win, COLOR_PAIR(colorPair) | attrs);
+    } else {
+        wattroff(win, A_REVERSE | A_BOLD);
+    }
+}
 }
 
 BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, bool hasColor) {
@@ -135,6 +165,9 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
     int frameCounter = 0;
     bool waitingForStart = true;
     bool gameOver = false;
+    std::string feedbackText;
+    int feedbackFrames = 0;
+    bool feedbackPositive = true;
 
     std::vector<Shot> playerShots;
     std::vector<Shot> enemyShots;
@@ -149,6 +182,18 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
             "  |  Wave: 1";
         mvwprintw(overlay, 8, (screenW - static_cast<int>(statusLine.size())) / 2,
                   "%s", statusLine.c_str());
+        if (feedbackFrames > 0) {
+            drawFeedbackBanner(overlay,
+                               arenaTop + 2,
+                               arenaLeft,
+                               arenaWidth,
+                               feedbackText,
+                               feedbackPositive,
+                               hasColor);
+            if (!gameOver) {
+                --feedbackFrames;
+            }
+        }
 
         if (hasColor) {
             wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
@@ -317,6 +362,9 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
                     enemies[enemyIndex].alive = false;
                     playerShots[shotIndex].y = arenaTop - 1;
                     ++result.shipsDestroyed;
+                    feedbackText = "DIRECT HIT! +$100";
+                    feedbackFrames = 28;
+                    feedbackPositive = true;
                     break;
                 }
             }
@@ -327,6 +375,9 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
                 enemyShots[i].x >= playerX &&
                 enemyShots[i].x <= playerX + 2) {
                 gameOver = true;
+                feedbackText = "HIT TAKEN! RUN ENDS";
+                feedbackFrames = 9999;
+                feedbackPositive = false;
                 break;
             }
         }
@@ -345,6 +396,9 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
         if (!anyAlive) {
             result.clearedWave = true;
             gameOver = true;
+            feedbackText = "WAVE CLEARED!";
+            feedbackFrames = 9999;
+            feedbackPositive = true;
         }
 
         napms(20);

@@ -244,6 +244,36 @@ void drawCell(WINDOW* win,
     }
 }
 
+void drawFeedbackBanner(WINDOW* win,
+                        int y,
+                        int arenaLeft,
+                        int arenaWidth,
+                        const std::string& text,
+                        bool positive,
+                        bool hasColor) {
+    if (text.empty()) {
+        return;
+    }
+
+    const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
+    const int attrs = A_BOLD | A_BLINK;
+    if (hasColor) {
+        wattron(win, COLOR_PAIR(colorPair) | attrs);
+    } else {
+        wattron(win, A_REVERSE | A_BOLD);
+    }
+    mvwprintw(win,
+              y,
+              arenaLeft + (arenaWidth - static_cast<int>(text.size())) / 2,
+              "%s",
+              text.c_str());
+    if (hasColor) {
+        wattroff(win, COLOR_PAIR(colorPair) | attrs);
+    } else {
+        wattroff(win, A_REVERSE | A_BOLD);
+    }
+}
+
 }  // namespace
 
 MinesweeperResult playMinesweeperMinigame(const std::string& playerName, bool hasColor) {
@@ -269,6 +299,9 @@ MinesweeperResult playMinesweeperMinigame(const std::string& playerName, bool ha
     int currentCol = 0;
     bool firstReveal = true;
     bool gameOver = false;
+    std::string feedbackText;
+    int feedbackFrames = 0;
+    bool feedbackPositive = true;
     const std::time_t startTime = std::time(nullptr);
 
     while (true) {
@@ -327,6 +360,18 @@ MinesweeperResult playMinesweeperMinigame(const std::string& playerName, bool ha
                   "One bomb ends the game. Each safe tile is worth $100.");
         mvwprintw(overlay, arenaTop + 3, arenaLeft + 3,
                   "First reveal opens with a safe 3x3 zone.");
+        if (feedbackFrames > 0) {
+            drawFeedbackBanner(overlay,
+                               arenaTop + 4,
+                               arenaLeft,
+                               arenaWidth,
+                               feedbackText,
+                               feedbackPositive,
+                               hasColor);
+            if (!gameOver) {
+                --feedbackFrames;
+            }
+        }
 
         const int gridStartY = arenaTop + 6;
         const int gridStartX = arenaLeft + (arenaWidth - GRID_WIDTH) / 2;
@@ -351,6 +396,9 @@ MinesweeperResult playMinesweeperMinigame(const std::string& playerName, bool ha
             std::string endLine;
             if (result.hitBomb) {
                 endLine = "Bomb hit. Earned $" + std::to_string(result.safeTilesRevealed * 100) +
+                          ". Press ENTER.";
+            } else if (result.safeTilesRevealed >= TOTAL_SAFE_TILES) {
+                endLine = "Board cleared. Earned $" + std::to_string(result.safeTilesRevealed * 100) +
                           ". Press ENTER.";
             } else {
                 endLine = "Time up. Earned $" + std::to_string(result.safeTilesRevealed * 100) +
@@ -409,11 +457,25 @@ MinesweeperResult playMinesweeperMinigame(const std::string& playerName, bool ha
             if (grid[static_cast<std::size_t>(idx)].hasBomb) {
                 result.hitBomb = true;
                 gameOver = true;
+                feedbackText = "BOMB! RUN ENDS";
+                feedbackFrames = 9999;
+                feedbackPositive = false;
             } else {
-                result.safeTilesRevealed += revealSafeTiles(grid, currentRow, currentCol);
+                const int revealedNow = revealSafeTiles(grid, currentRow, currentCol);
+                result.safeTilesRevealed += revealedNow;
+                if (revealedNow > 0) {
+                    feedbackText = "SAFE! +" + std::to_string(revealedNow) + " tile";
+                    if (revealedNow != 1) {
+                        feedbackText += "s";
+                    }
+                    feedbackFrames = 24;
+                    feedbackPositive = true;
+                }
                 if (result.safeTilesRevealed >= TOTAL_SAFE_TILES) {
-                    result.timedOut = true;
                     gameOver = true;
+                    feedbackText = "BOARD CLEARED!";
+                    feedbackFrames = 9999;
+                    feedbackPositive = true;
                 }
             }
         }

@@ -150,6 +150,8 @@ make clean
 5. Review or skip the tutorial.
 6. During a turn:
    - press `Enter` to begin the turn
+   - press `Tab` to view the player scoreboard
+   - press `G` to view the tile abbreviation guide
    - hold/release `Space` to spin
    - use menu keys when branch choices or popups appear
 7. When all players retire, the final scoring screen declares the winner.
@@ -161,6 +163,8 @@ make clean
 - `Q`: quit or back out of many menus
 - `Enter`: confirm / continue / start a turn
 - `Space`: spin the wheel
+- `Tab`: open the player scoreboard during a turn
+- `G`: open the tile abbreviation guide during a turn
 - `Up/Down`: move through lists and custom-mode toggles
 - `Left/Right`: switch between normal mode and custom mode
 - `K` or `?`: open the controls popup during the game
