@@ -144,3 +144,93 @@ CpuMinigameResult CpuController::playBlackTileMinigame(const Player& player, int
     }
     return result;
 }
+
+bool CpuController::shouldUseSabotage(const Player& player, int turnCounter) {
+    if (player.sabotageCooldown > 0 || turnCounter < 2 || player.cash < 15000) {
+        return false;
+    }
+
+    const int rank = difficultyRank(player);
+    if (rank == 0) {
+        return chance(12);
+    }
+    if (rank == 2) {
+        return chance(player.cash > 90000 ? 55 : 35);
+    }
+    return chance(28);
+}
+
+int CpuController::chooseSabotageTarget(const Player& player,
+                                        const std::vector<Player>& players,
+                                        int selfIndex) {
+    (void)player;
+    int bestIndex = -1;
+    int bestWorth = -2147483647;
+    for (std::size_t i = 0; i < players.size(); ++i) {
+        if (static_cast<int>(i) == selfIndex || players[i].retired) {
+            continue;
+        }
+        const int worth = totalWorth(players[i]);
+        if (worth > bestWorth) {
+            bestWorth = worth;
+            bestIndex = static_cast<int>(i);
+        }
+    }
+
+    if (bestIndex < 0) {
+        return -1;
+    }
+
+    if (difficultyRank(player) == 0 && players.size() > 1) {
+        for (int attempts = 0; attempts < 8; ++attempts) {
+            const int candidate = rng.uniformInt(0, static_cast<int>(players.size()) - 1);
+            if (candidate != selfIndex && !players[static_cast<std::size_t>(candidate)].retired) {
+                return candidate;
+            }
+        }
+    }
+    return bestIndex;
+}
+
+SabotageType CpuController::chooseSabotageType(const Player& player,
+                                               const Player& target,
+                                               int turnCounter) {
+    const int rank = difficultyRank(player);
+    if (rank == 0) {
+        const int pick = rng.uniformInt(0, 3);
+        if (pick == 0) return SabotageType::MoneyLoss;
+        if (pick == 1) return SabotageType::MovementPenalty;
+        if (pick == 2) return SabotageType::DebtIncrease;
+        return SabotageType::StealCard;
+    }
+
+    if (rank == 2) {
+        if (target.shieldCards > 0 || target.insuranceUses > 0) {
+            return SabotageType::ItemDisable;
+        }
+        if (turnCounter > 12 && player.cash >= 90000 && target.tile > player.tile + 8) {
+            return SabotageType::PositionSwap;
+        }
+        if (target.salary >= 70000 && player.cash >= 24000) {
+            return SabotageType::CareerPenalty;
+        }
+        if (!target.actionCards.empty()) {
+            return SabotageType::StealCard;
+        }
+        if (target.cash > player.cash + 50000) {
+            return SabotageType::ForceMinigame;
+        }
+        return SabotageType::DebtIncrease;
+    }
+
+    if (!target.actionCards.empty() && chance(35)) {
+        return SabotageType::StealCard;
+    }
+    if ((target.shieldCards > 0 || target.insuranceUses > 0) && chance(25)) {
+        return SabotageType::ItemDisable;
+    }
+    if (target.tile > player.tile + 5 && chance(45)) {
+        return SabotageType::MovementPenalty;
+    }
+    return SabotageType::MoneyLoss;
+}

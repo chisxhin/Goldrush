@@ -147,6 +147,7 @@ Game::Game()
       cpu(rng),
       decks(rules, rng),
       bank(rules),
+      sabotage(bank, rng),
       history(6),
       titleWin(nullptr),
       boardWin(nullptr),
@@ -160,7 +161,8 @@ Game::Game()
       assignedSaveFilename(),
       createdTime(0),
       lastSavedTime(0),
-      autoAdvanceUi(false) {
+      autoAdvanceUi(false),
+      activeTraps() {
 }
 
 Game::Game(std::uint32_t seed)
@@ -169,6 +171,7 @@ Game::Game(std::uint32_t seed)
       cpu(rng),
       decks(rules, rng),
       bank(rules),
+      sabotage(bank, rng),
       history(6),
       titleWin(nullptr),
       boardWin(nullptr),
@@ -182,7 +185,8 @@ Game::Game(std::uint32_t seed)
       assignedSaveFilename(),
       createdTime(0),
       lastSavedTime(0),
-      autoAdvanceUi(false) {
+      autoAdvanceUi(false),
+      activeTraps() {
 }
 
 Game::~Game() {
@@ -761,7 +765,7 @@ void Game::showTutorial() {
     pages[0].push_back("Paydays add salary. Action cards shake up your money.");
     pages[0].push_back("Marriage, babies, and house sales use special event spins.");
     pages[0].push_back("Retirement lets you choose MM or CA and awards order bonuses.");
-    pages[0].push_back("During turns: TAB scoreboard, G tile guide, K controls.");
+    pages[0].push_back("During turns: B sabotage/defense, TAB scoreboard, G tile guide, K controls.");
 
     std::vector<std::string> legend = board.tutorialLegend();
     pages.push_back(std::vector<std::string>(legend.begin(), legend.begin() + 9));
@@ -803,7 +807,7 @@ void Game::showTutorial() {
 void Game::showControlsPopup() const {
     int h, w;
     getmaxyx(stdscr, h, w);
-    WINDOW* popup = newwin(15, 70, (h - 15) / 2, (w - 70) / 2);
+    WINDOW* popup = newwin(16, 70, (h - 16) / 2, (w - 70) / 2);
     applyWindowBg(popup);
     box(popup, 0, 0);
     mvwprintw(popup, 1, 2, "Controls");
@@ -812,14 +816,15 @@ void Game::showControlsPopup() const {
     mvwprintw(popup, 5, 2, "UP/DN  Move through menus and custom mode toggles");
     mvwprintw(popup, 6, 2, "TAB    Open the player scoreboard");
     mvwprintw(popup, 7, 2, "G      Open the tile abbreviation guide");
-    mvwprintw(popup, 8, 2, "S      Save the current game");
-    mvwprintw(popup, 9, 2, "K/?    Open this controls popup");
-    mvwprintw(popup, 10, 2, "Q      Quit the game");
-    mvwprintw(popup, 11, 2, "STOP spaces end movement immediately.");
-    mvwprintw(popup, 12, 2, "College tuition is paid as soon as College route is chosen.");
-    mvwprintw(popup, 13, 2, "Press ENTER");
+    mvwprintw(popup, 8, 2, "B      Open sabotage and defense actions");
+    mvwprintw(popup, 9, 2, "S      Save the current game");
+    mvwprintw(popup, 10, 2, "K/?    Open this controls popup");
+    mvwprintw(popup, 11, 2, "Q      Quit the game");
+    mvwprintw(popup, 12, 2, "STOP spaces end movement immediately.");
+    mvwprintw(popup, 13, 2, "College tuition is paid as soon as College route is chosen.");
+    mvwprintw(popup, 14, 2, "Press ENTER");
     wrefresh(popup);
-    waitForEnter(popup, 13, 15, "");
+    waitForEnter(popup, 14, 15, "");
     delwin(popup);
 }
 
@@ -941,6 +946,344 @@ void Game::showCpuThinking(int playerIndex, const std::string& action) const {
     napms(550);
 }
 
+int Game::effectiveSalary(const Player& player) const {
+    if (player.salaryReductionTurns <= 0 || player.salaryReductionPercent <= 0) {
+        return player.salary;
+    }
+    const int reduction = (player.salary * player.salaryReductionPercent) / 100;
+    return std::max(0, player.salary - reduction);
+}
+
+void Game::decrementTurnStatuses(Player& player) {
+    if (player.movementPenaltyTurns > 0) {
+        --player.movementPenaltyTurns;
+        if (player.movementPenaltyTurns == 0) {
+            player.movementPenaltyPercent = 0;
+        }
+    }
+    if (player.salaryReductionTurns > 0) {
+        --player.salaryReductionTurns;
+        if (player.salaryReductionTurns == 0) {
+            player.salaryReductionPercent = 0;
+        }
+    }
+    if (player.sabotageCooldown > 0) {
+        --player.sabotageCooldown;
+    }
+    if (player.itemDisableTurns > 0) {
+        --player.itemDisableTurns;
+    }
+}
+
+bool Game::resolveSkipTurn(int playerIndex) {
+    Player& player = players[static_cast<std::size_t>(playerIndex)];
+    if (!player.skipNextTurn) {
+        return false;
+    }
+    player.skipNextTurn = false;
+    addHistory(player.name + " skipped a turn from sabotage");
+    renderGame(playerIndex, player.name + " skips this turn", "Sabotage effect resolved.");
+    const bool previousAutoAdvance = autoAdvanceUi;
+    autoAdvanceUi = isCpuPlayer(playerIndex);
+    showInfoPopup("Skip Turn", player.name + " loses this turn to sabotage.");
+    autoAdvanceUi = previousAutoAdvance;
+    decrementTurnStatuses(player);
+    return true;
+}
+
+int Game::chooseSabotageTarget(int attackerIndex) {
+    std::vector<int> candidates;
+    for (size_t i = 0; i < players.size(); ++i) {
+        if (static_cast<int>(i) != attackerIndex && !players[i].retired) {
+            candidates.push_back(static_cast<int>(i));
+        }
+    }
+    if (candidates.empty()) {
+        showInfoPopup("Sabotage", "No valid targets.");
+        return -1;
+    }
+
+    int h, w;
+    getmaxyx(stdscr, h, w);
+    WINDOW* popup = newwin(14, 68, (h - 14) / 2, (w - 68) / 2);
+    applyWindowBg(popup);
+    keypad(popup, TRUE);
+    int selected = 0;
+    while (true) {
+        werase(popup);
+        box(popup, 0, 0);
+        mvwprintw(popup, 1, 2, "Choose Sabotage Target");
+        for (size_t row = 0; row < candidates.size(); ++row) {
+            const int playerIndex = candidates[row];
+            if (static_cast<int>(row) == selected) {
+                wattron(popup, A_REVERSE);
+            }
+            mvwprintw(popup, 3 + static_cast<int>(row), 2, "%s  cash $%d  worth $%d",
+                      players[static_cast<std::size_t>(playerIndex)].name.c_str(),
+                      players[static_cast<std::size_t>(playerIndex)].cash,
+                      calculateFinalWorth(players[static_cast<std::size_t>(playerIndex)]));
+            if (static_cast<int>(row) == selected) {
+                wattroff(popup, A_REVERSE);
+            }
+        }
+        mvwprintw(popup, 12, 2, "Up/Down move  ENTER select  Q cancel");
+        wrefresh(popup);
+
+        const int ch = wgetch(popup);
+        if (ch == KEY_UP) {
+            selected = selected == 0 ? static_cast<int>(candidates.size()) - 1 : selected - 1;
+        } else if (ch == KEY_DOWN) {
+            selected = selected + 1 >= static_cast<int>(candidates.size()) ? 0 : selected + 1;
+        } else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+            const int chosen = candidates[static_cast<std::size_t>(selected)];
+            delwin(popup);
+            return chosen;
+        } else if (ch == 'q' || ch == 'Q' || ch == 27) {
+            delwin(popup);
+            return -1;
+        }
+    }
+}
+
+int Game::chooseTrapTile(int attackerIndex) {
+    Player& player = players[static_cast<std::size_t>(attackerIndex)];
+    echo();
+    curs_set(1);
+    werase(msgWin);
+    box(msgWin, 0, 0);
+    mvwprintw(msgWin, 1, 2, "Trap tile id (0-%d) [%d]: ", TILE_COUNT - 1, player.tile);
+    mvwprintw(msgWin, 2, 2, "Tip: choose a tile ahead of the leader.");
+    wrefresh(msgWin);
+
+    char buffer[16] = {0};
+    wgetnstr(msgWin, buffer, 15);
+    noecho();
+    curs_set(0);
+
+    if (std::strlen(buffer) == 0) {
+        return player.tile;
+    }
+    const int tileId = std::atoi(buffer);
+    if (tileId < 0 || tileId >= TILE_COUNT) {
+        showInfoPopup("Trap Tile", "Invalid tile id.");
+        return -1;
+    }
+    return tileId;
+}
+
+void Game::placeTrap(int attackerIndex, int tileId, SabotageType type) {
+    if (attackerIndex < 0 ||
+        attackerIndex >= static_cast<int>(players.size()) ||
+        tileId < 0 ||
+        tileId >= TILE_COUNT) {
+        return;
+    }
+    Player& attacker = players[static_cast<std::size_t>(attackerIndex)];
+    const SabotageCard card = sabotageCardByName("Trap Tile");
+    PaymentResult payment = bank.charge(attacker, card.costToUse);
+
+    ActiveTrap trap;
+    trap.tileId = tileId;
+    trap.ownerIndex = attackerIndex;
+    trap.effectType = type;
+    trap.strengthLevel = 2;
+    trap.armed = true;
+    activeTraps.push_back(trap);
+
+    addHistory(attacker.name + " placed a " + sabotageTypeName(type) + " trap on tile " +
+               std::to_string(tileId));
+    std::string detail = "Trap armed on tile " + std::to_string(tileId) + ".";
+    if (payment.loansTaken > 0) {
+        detail += " Auto-loans: " + std::to_string(payment.loansTaken) + ".";
+    }
+    showInfoPopup("Trap Tile", detail);
+}
+
+void Game::executeSabotage(int attackerIndex, int targetIndex, SabotageType type) {
+    if (attackerIndex < 0 ||
+        targetIndex < 0 ||
+        attackerIndex >= static_cast<int>(players.size()) ||
+        targetIndex >= static_cast<int>(players.size()) ||
+        attackerIndex == targetIndex) {
+        return;
+    }
+    Player& attacker = players[static_cast<std::size_t>(attackerIndex)];
+    Player& target = players[static_cast<std::size_t>(targetIndex)];
+    if (attacker.sabotageCooldown > 0) {
+        showInfoPopup("Sabotage cooldown",
+                      attacker.name + " must wait " + std::to_string(attacker.sabotageCooldown) + " more turn(s).");
+        return;
+    }
+
+    const SabotageCard card = type == SabotageType::MoneyLoss
+        ? sabotageCardByName("Lawsuit")
+        : sabotageCardForType(type);
+    PaymentResult cost = bank.charge(attacker, card.costToUse);
+    SabotageResult result = sabotage.applyDirectSabotage(card,
+                                                         attacker,
+                                                         target,
+                                                         players,
+                                                         attackerIndex,
+                                                         targetIndex);
+    if (type == SabotageType::PositionSwap && result.success) {
+        const int cooldown = result.critical ? 3 : 4;
+        attacker.sabotageCooldown = std::max(attacker.sabotageCooldown, cooldown + 1);
+    } else if (result.success || result.blocked) {
+        attacker.sabotageCooldown = std::max(attacker.sabotageCooldown, 2);
+    }
+
+    std::string detail = result.summary;
+    if (cost.loansTaken > 0) {
+        detail += " Cost auto-loans: " + std::to_string(cost.loansTaken) + ".";
+    }
+    addHistory(attacker.name + " used " + card.name + " on " + target.name);
+    addHistory(detail);
+    showInfoPopup(card.name, detail);
+}
+
+bool Game::promptSabotageMenu(int attackerIndex) {
+    Player& attacker = players[static_cast<std::size_t>(attackerIndex)];
+    int h, w;
+    getmaxyx(stdscr, h, w);
+    WINDOW* popup = newwin(19, 82, (h - 19) / 2, (w - 82) / 2);
+    applyWindowBg(popup);
+    keypad(popup, TRUE);
+
+    while (true) {
+        werase(popup);
+        box(popup, 0, 0);
+        mvwprintw(popup, 1, 2, "Sabotage Menu - %s", attacker.name.c_str());
+        mvwprintw(popup, 2, 2, "Cash $%d  Shields %d  Insurance %d  Cooldown %d",
+                  attacker.cash, attacker.shieldCards, attacker.insuranceUses, attacker.sabotageCooldown);
+        mvwprintw(popup, 4, 2, "1 Trap Tile ($12000)");
+        mvwprintw(popup, 5, 2, "2 Lawsuit ($15000)");
+        mvwprintw(popup, 6, 2, "3 Traffic Jam ($10000)");
+        mvwprintw(popup, 7, 2, "4 Steal Action Card ($18000)");
+        mvwprintw(popup, 8, 2, "5 Forced Duel Minigame ($22000)");
+        mvwprintw(popup, 9, 2, "6 Career Sabotage ($24000)");
+        mvwprintw(popup, 10, 2, "7 Position Swap ($90000, cooldown)");
+        mvwprintw(popup, 11, 2, "8 Debt Trap ($20000)");
+        mvwprintw(popup, 12, 2, "9 Buy Shield Card ($15000)");
+        mvwprintw(popup, 13, 2, "0 Buy Insurance ($20000, 2 uses)");
+        mvwprintw(popup, 14, 2, "D Item Disable ($16000)");
+        mvwprintw(popup, 17, 2, "Choose option or Q cancel");
+        wrefresh(popup);
+
+        const int ch = wgetch(popup);
+        delwin(popup);
+        if (ch == 'q' || ch == 'Q' || ch == 27) {
+            return false;
+        }
+        if (ch == '9') {
+            PaymentResult payment = bank.charge(attacker, 15000);
+            ++attacker.shieldCards;
+            std::string detail = "Shield Card added. Blocks one future sabotage.";
+            if (payment.loansTaken > 0) {
+                detail += " Auto-loans: " + std::to_string(payment.loansTaken) + ".";
+            }
+            showInfoPopup("Shield Card", detail);
+            return true;
+        }
+        if (ch == '0') {
+            PaymentResult payment = bank.charge(attacker, 20000);
+            attacker.insuranceUses += 2;
+            std::string detail = "Insurance added. Next 2 money/property hits are halved.";
+            if (payment.loansTaken > 0) {
+                detail += " Auto-loans: " + std::to_string(payment.loansTaken) + ".";
+            }
+            showInfoPopup("Insurance", detail);
+            return true;
+        }
+        if (ch == '1') {
+            const int tileId = chooseTrapTile(attackerIndex);
+            if (tileId < 0) return false;
+            werase(msgWin);
+            box(msgWin, 0, 0);
+            mvwprintw(msgWin, 1, 2, "Trap effect: 1 money  2 backward  3 skip  4 lose card  5 minigame");
+            mvwprintw(msgWin, 2, 2, "Choose effect:");
+            wrefresh(msgWin);
+            const int trapChoice = wgetch(msgWin);
+            SabotageType trapType = SabotageType::MoneyLoss;
+            if (trapChoice == '2') trapType = SabotageType::MovementPenalty;
+            else if (trapChoice == '3') trapType = SabotageType::SkipTurn;
+            else if (trapChoice == '4') trapType = SabotageType::StealCard;
+            else if (trapChoice == '5') trapType = SabotageType::ForceMinigame;
+            placeTrap(attackerIndex, tileId, trapType);
+            return true;
+        }
+
+        SabotageType type = SabotageType::MoneyLoss;
+        if (ch == '2') type = SabotageType::MoneyLoss;
+        else if (ch == '3') type = SabotageType::MovementPenalty;
+        else if (ch == '4') type = SabotageType::StealCard;
+        else if (ch == '5') type = SabotageType::ForceMinigame;
+        else if (ch == '6') type = SabotageType::CareerPenalty;
+        else if (ch == '7') type = SabotageType::PositionSwap;
+        else if (ch == '8') type = SabotageType::DebtIncrease;
+        else if (ch == 'd' || ch == 'D') type = SabotageType::ItemDisable;
+        else return false;
+
+        const int targetIndex = chooseSabotageTarget(attackerIndex);
+        if (targetIndex >= 0) {
+            executeSabotage(attackerIndex, targetIndex, type);
+            return true;
+        }
+        return false;
+    }
+}
+
+void Game::maybeCpuSabotage(int playerIndex) {
+    if (!isCpuPlayer(playerIndex) || !cpu.shouldUseSabotage(players[playerIndex], turnCounter)) {
+        return;
+    }
+
+    const int targetIndex = cpu.chooseSabotageTarget(players[playerIndex], players, playerIndex);
+    if (targetIndex < 0) {
+        return;
+    }
+
+    const SabotageType type = cpu.chooseSabotageType(players[playerIndex],
+                                                    players[static_cast<std::size_t>(targetIndex)],
+                                                    turnCounter);
+    const bool previousAutoAdvance = autoAdvanceUi;
+    autoAdvanceUi = true;
+    showCpuThinking(playerIndex,
+                    "CPU sabotage: " + sabotageTypeName(type) + " on " +
+                    players[static_cast<std::size_t>(targetIndex)].name);
+    executeSabotage(playerIndex, targetIndex, type);
+    autoAdvanceUi = previousAutoAdvance;
+}
+
+void Game::checkTrapTrigger(int playerIndex) {
+    Player& player = players[static_cast<std::size_t>(playerIndex)];
+    for (size_t i = 0; i < activeTraps.size(); ++i) {
+        ActiveTrap& trap = activeTraps[i];
+        if (!trap.armed || trap.tileId != player.tile || trap.ownerIndex == playerIndex) {
+            continue;
+        }
+
+        trap.armed = false;
+        SabotageResult result = sabotage.triggerTrap(trap, player);
+        addHistory(player.name + " triggered a trap on tile " + std::to_string(trap.tileId));
+        addHistory(result.summary);
+        showInfoPopup("Trap triggered", result.summary);
+
+        if (result.success && trap.effectType == SabotageType::MovementPenalty) {
+            const int stepsBack = result.critical ? 3 : 2;
+            for (int step = 0; step < stepsBack; ++step) {
+                player.tile = findPreviousTile(player, player.tile);
+            }
+            renderGame(playerIndex,
+                       player.name + " was pushed backward by a trap",
+                       "Moved back " + std::to_string(stepsBack) + " spaces.");
+            napms(450);
+        } else if (result.success && trap.effectType == SabotageType::ForceMinigame) {
+            playBlackTileMinigame(playerIndex);
+        }
+        return;
+    }
+}
+
 void Game::setupRules() {
     SaveManager saveManager;
     decks.reset(rules);
@@ -952,6 +1295,7 @@ void Game::setupRules() {
     assignedSaveFilename.clear();
     createdTime = std::time(0);
     lastSavedTime = 0;
+    activeTraps.clear();
     history.clear();
     addHistory("Mode: " + rules.editionName);
 }
@@ -1042,6 +1386,16 @@ void Game::setupPlayers() {
         p.riskChoice = -1;
         p.type = playerType;
         p.cpuDifficulty = difficulty;
+        p.sabotageDebt = 0;
+        p.shieldCards = 0;
+        p.insuranceUses = 0;
+        p.skipNextTurn = false;
+        p.movementPenaltyTurns = 0;
+        p.movementPenaltyPercent = 0;
+        p.salaryReductionTurns = 0;
+        p.salaryReductionPercent = 0;
+        p.sabotageCooldown = 0;
+        p.itemDisableTurns = 0;
         players.push_back(p);
         if (p.type == PlayerType::CPU) {
             addHistory("Joined CPU: " + p.name + " (" + cpuDifficultyLabel(p.cpuDifficulty) + ")");
@@ -1080,28 +1434,29 @@ int Game::waitForTurnCommand(int currentPlayer) {
             createWindows();
             renderGame(currentPlayer,
                        players[currentPlayer].name + "'s turn",
-                       "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
+                       "ENTER spin | B sabotage | TAB scores | G guide | K keys | S save | Q quit/save");
             continue;
         }
         if (ch == 'q' || ch == 'Q') return ch;
         if (ch == 's' || ch == 'S') return ch;
+        if (ch == 'b' || ch == 'B') return ch;
         if (ch == '\t') {
             showScoreboardPopup();
             renderGame(currentPlayer,
                        players[currentPlayer].name + "'s turn",
-                       "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
+                       "ENTER spin | B sabotage | TAB scores | G guide | K keys | S save | Q quit/save");
             continue;
         }
         if (ch == 'g' || ch == 'G') {
             showTileGuidePopup();
             renderGame(currentPlayer,
                        players[currentPlayer].name + "'s turn",
-                       "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
+                       "ENTER spin | B sabotage | TAB scores | G guide | K keys | S save | Q quit/save");
             continue;
         }
         if (ch == 'k' || ch == 'K' || ch == '?') {
             showControlsPopup();
-            renderGame(currentPlayer, players[currentPlayer].name + "'s turn", "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
+            renderGame(currentPlayer, players[currentPlayer].name + "'s turn", "ENTER spin | B sabotage | TAB scores | G guide | K keys | S save | Q quit/save");
             continue;
         }
         if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
@@ -2046,9 +2401,12 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
             addHistory(player.name + " got a promotion");
             break;
         case TILE_PAYDAY: {
-            int payout = tile.value + player.salary;
+            int payout = tile.value + effectiveSalary(player);
             bank.credit(player, payout);
             line = "PAYDAY: collected $" + std::to_string(payout) + ".";
+            if (player.salaryReductionTurns > 0) {
+                line += " Salary sabotage reduced this payday.";
+            }
             addHistory(player.name + " collected payday $" + std::to_string(payout));
             break;
         }
@@ -2137,9 +2495,11 @@ bool Game::animateMove(int currentPlayer, int steps) {
         }
         renderGame(currentPlayer, message, "Movement in progress...");
         napms(170);
+        checkTrapTrigger(currentPlayer);
+        const Tile& afterTrap = board.tileAt(player.tile);
 
-        if (board.isStopSpace(landed)) {
-            applyTileEffect(currentPlayer, landed);
+        if (board.isStopSpace(afterTrap)) {
+            applyTileEffect(currentPlayer, afterTrap);
             return true;
         }
     }
@@ -2152,6 +2512,25 @@ void Game::takeMovementSpin(int currentPlayer, const std::string& reason) {
     addHistory(player.name + " spun " + std::to_string(roll));
     maybeAwardSpinToWin(player, roll);
     resolveInvestmentPayouts(roll);
+
+    if (player.movementPenaltyTurns > 0 && player.movementPenaltyPercent > 0) {
+        const int originalRoll = roll;
+        if (player.movementPenaltyPercent >= 100) {
+            roll = 0;
+        } else {
+            roll = std::max(1, (roll * (100 - player.movementPenaltyPercent)) / 100);
+        }
+        addHistory(player.name + " movement reduced from " +
+                   std::to_string(originalRoll) + " to " + std::to_string(roll));
+        showInfoPopup("Traffic Jam", "Movement reduced from " +
+                      std::to_string(originalRoll) + " to " + std::to_string(roll) + ".");
+    }
+
+    if (roll <= 0) {
+        addHistory(player.name + " could not move because of sabotage");
+        showInfoPopup("Traffic Jam", "Movement cancelled. No tile effect is resolved.");
+        return;
+    }
 
     bool stoppedEarly = animateMove(currentPlayer, roll);
     if (!stoppedEarly) {
@@ -2248,9 +2627,16 @@ bool Game::run() {
             continue;
         }
 
+        if (resolveSkipTurn(currentPlayerIndex)) {
+            ++turnCounter;
+            currentPlayerIndex = (currentPlayerIndex + 1) % static_cast<int>(players.size());
+            continue;
+        }
+
         renderGame(currentPlayerIndex,
                    players[currentPlayerIndex].name + "'s turn",
-                   "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
+                   "ENTER spin | B sabotage | TAB scores | G guide | K keys | S save | Q quit/save");
+        maybeCpuSabotage(currentPlayerIndex);
         int command = waitForTurnCommand(currentPlayerIndex);
         if (command == 'q' || command == 'Q') {
             const int quitChoice = showBranchPopup(
@@ -2267,7 +2653,7 @@ bool Game::run() {
                 }
                 renderGame(currentPlayerIndex,
                            players[currentPlayerIndex].name + "'s turn",
-                           "ENTER spin | TAB scores | G guide | K keys | S save | Q quit/save");
+                           "ENTER spin | B sabotage | TAB scores | G guide | K keys | S save | Q quit/save");
                 continue;
             }
             return false;
@@ -2276,10 +2662,20 @@ bool Game::run() {
             saveCurrentGame();
             continue;
         }
+        if (command == 'b' || command == 'B') {
+            const bool sabotageUsed = promptSabotageMenu(currentPlayerIndex);
+            renderGame(currentPlayerIndex,
+                       players[currentPlayerIndex].name + "'s turn",
+                       "ENTER spin | B sabotage | TAB scores | G guide | K keys | S save | Q quit/save");
+            if (!sabotageUsed) {
+                continue;
+            }
+        }
 
         autoAdvanceUi = isCpuPlayer(currentPlayerIndex);
         takeMovementSpin(currentPlayerIndex, "Movement Spin");
         autoAdvanceUi = false;
+        decrementTurnStatuses(players[currentPlayerIndex]);
         ++turnCounter;
         currentPlayerIndex = (currentPlayerIndex + 1) % static_cast<int>(players.size());
     }

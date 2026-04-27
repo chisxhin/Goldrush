@@ -193,6 +193,14 @@ void draw_sidebar_ui(WINDOW* panelWin,
         mvwprintw(panelWin, 8, 2, "Home:%-.12s", home.c_str());
         if (player.type == PlayerType::CPU) {
             mvwprintw(panelWin, 9, 2, "AI:%-.12s", cpuDifficultyLabel(player.cpuDifficulty).c_str());
+        } else {
+            mvwprintw(panelWin, 9, 2, "Def S:%d I:%d", player.shieldCards, player.insuranceUses);
+        }
+        if (player.sabotageCooldown > 0 || player.skipNextTurn || player.salaryReductionTurns > 0) {
+            mvwprintw(panelWin, 10, 2, "Sab CD:%d Skip:%s Sal:%d",
+                      player.sabotageCooldown,
+                      player.skipNextTurn ? "Y" : "N",
+                      player.salaryReductionTurns);
         }
         wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
     }

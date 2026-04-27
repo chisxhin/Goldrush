@@ -152,6 +152,7 @@ make clean
 5. Review or skip the tutorial.
 6. During a turn:
    - press `Enter` to begin the turn
+   - press `B` to use sabotage or buy defenses
    - press `Tab` to view the player scoreboard
    - press `G` to view the tile abbreviation guide
    - hold/release `Space` to spin
@@ -165,6 +166,7 @@ make clean
 - `Q`: quit or back out of many menus
 - `Enter`: confirm / continue / start a turn
 - `Space`: spin the wheel
+- `B`: open sabotage and defense actions during a turn
 - `Tab`: open the player scoreboard during a turn
 - `G`: open the tile abbreviation guide during a turn
 - `Up/Down`: move through lists and custom-mode toggles
@@ -194,6 +196,7 @@ This means a loaded game resumes from the same state instead of rebuilding an ap
 - [player.hpp], [player.cpp]: player data and worth calculation
 - [cards.hpp], [cards.cpp]: card models, deck setup, roll-based card behavior
 - [cpu_player.hpp], [cpu_player.cpp]: CPU player strategy, difficulty, and automated minigame results
+- [sabotage.h], [sabotage.cpp], [sabotage_card.h], [sabotage_card.cpp]: sabotage actions, traps, defenses, and effect resolution
 - [save_manager.hpp], [save_manager.cpp]: save-file listing, parsing, writing, duplicate archival
 - [ui.h], [ui.cpp]: color setup and shared UI drawing helpers
 - [rules.hpp], [rules.cpp]: rulesets and toggle presets

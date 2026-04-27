@@ -14,6 +14,7 @@
 #include "player.hpp"
 #include "random_service.hpp"
 #include "rules.hpp"
+#include "sabotage.h"
 
 class SaveManager;
 struct SaveFileInfo;
@@ -53,6 +54,7 @@ private:
     CpuController cpu;
     DeckManager decks;
     Bank bank;
+    SabotageManager sabotage;
     ActionHistory history;
     WINDOW* titleWin;
     WINDOW* boardWin;
@@ -67,6 +69,7 @@ private:
     std::time_t createdTime;
     std::time_t lastSavedTime;
     bool autoAdvanceUi;
+    std::vector<ActiveTrap> activeTraps;
 
     bool ensureMinSize() const;
     void createWindows();
@@ -92,6 +95,16 @@ private:
     int findPlayerIndex(const Player& player) const;
     bool isCpuPlayer(int playerIndex) const;
     void showCpuThinking(int playerIndex, const std::string& action) const;
+    int effectiveSalary(const Player& player) const;
+    void decrementTurnStatuses(Player& player);
+    bool resolveSkipTurn(int playerIndex);
+    void maybeCpuSabotage(int playerIndex);
+    bool promptSabotageMenu(int attackerIndex);
+    int chooseSabotageTarget(int attackerIndex);
+    int chooseTrapTile(int attackerIndex);
+    void executeSabotage(int attackerIndex, int targetIndex, SabotageType type);
+    void placeTrap(int attackerIndex, int tileId, SabotageType type);
+    void checkTrapTrigger(int playerIndex);
     void setupRules();
     void setupPlayers();
     void setupInvestments();

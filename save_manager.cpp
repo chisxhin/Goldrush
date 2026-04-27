@@ -27,6 +27,7 @@ struct LoadedGameState {
     SerializedDeckState houseDeck;
     SerializedDeckState investDeck;
     SerializedDeckState petDeck;
+    std::vector<ActiveTrap> activeTraps;
     bool rngFixedSeed;
     std::uint32_t rngSeedValue;
     std::string rngState;
@@ -366,6 +367,16 @@ Player makeDefaultPlayer(int index) {
     player.riskChoice = -1;
     player.type = PlayerType::Human;
     player.cpuDifficulty = CpuDifficulty::Normal;
+    player.sabotageDebt = 0;
+    player.shieldCards = 0;
+    player.insuranceUses = 0;
+    player.skipNextTurn = false;
+    player.movementPenaltyTurns = 0;
+    player.movementPenaltyPercent = 0;
+    player.salaryReductionTurns = 0;
+    player.salaryReductionPercent = 0;
+    player.sabotageCooldown = 0;
+    player.itemDisableTurns = 0;
     return player;
 }
 
@@ -431,6 +442,16 @@ void writePlayer(std::ofstream& out, const Player& player, int index) {
     out << "PLAYER\t" << index << "\tSTART_CHOICE\t" << player.startChoice << "\n";
     out << "PLAYER\t" << index << "\tFAMILY_CHOICE\t" << player.familyChoice << "\n";
     out << "PLAYER\t" << index << "\tRISK_CHOICE\t" << player.riskChoice << "\n";
+    out << "PLAYER\t" << index << "\tSABOTAGE_DEBT\t" << player.sabotageDebt << "\n";
+    out << "PLAYER\t" << index << "\tSHIELD_CARDS\t" << player.shieldCards << "\n";
+    out << "PLAYER\t" << index << "\tINSURANCE_USES\t" << player.insuranceUses << "\n";
+    out << "PLAYER\t" << index << "\tSKIP_NEXT_TURN\t" << boolText(player.skipNextTurn) << "\n";
+    out << "PLAYER\t" << index << "\tMOVEMENT_PENALTY_TURNS\t" << player.movementPenaltyTurns << "\n";
+    out << "PLAYER\t" << index << "\tMOVEMENT_PENALTY_PERCENT\t" << player.movementPenaltyPercent << "\n";
+    out << "PLAYER\t" << index << "\tSALARY_REDUCTION_TURNS\t" << player.salaryReductionTurns << "\n";
+    out << "PLAYER\t" << index << "\tSALARY_REDUCTION_PERCENT\t" << player.salaryReductionPercent << "\n";
+    out << "PLAYER\t" << index << "\tSABOTAGE_COOLDOWN\t" << player.sabotageCooldown << "\n";
+    out << "PLAYER\t" << index << "\tITEM_DISABLE_TURNS\t" << player.itemDisableTurns << "\n";
 
     for (std::size_t i = 0; i < player.actionCards.size(); ++i) {
         out << "PLAYER\t" << index << "\tACTION_CARD\t"
@@ -524,11 +545,21 @@ bool parsePlayerField(Player& player,
     if (field == "START_CHOICE") return parseInt(value, player.startChoice);
     if (field == "FAMILY_CHOICE") return parseInt(value, player.familyChoice);
     if (field == "RISK_CHOICE") return parseInt(value, player.riskChoice);
+    if (field == "SABOTAGE_DEBT") return parseInt(value, player.sabotageDebt);
+    if (field == "SHIELD_CARDS") return parseInt(value, player.shieldCards);
+    if (field == "INSURANCE_USES") return parseInt(value, player.insuranceUses);
+    if (field == "MOVEMENT_PENALTY_TURNS") return parseInt(value, player.movementPenaltyTurns);
+    if (field == "MOVEMENT_PENALTY_PERCENT") return parseInt(value, player.movementPenaltyPercent);
+    if (field == "SALARY_REDUCTION_TURNS") return parseInt(value, player.salaryReductionTurns);
+    if (field == "SALARY_REDUCTION_PERCENT") return parseInt(value, player.salaryReductionPercent);
+    if (field == "SABOTAGE_COOLDOWN") return parseInt(value, player.sabotageCooldown);
+    if (field == "ITEM_DISABLE_TURNS") return parseInt(value, player.itemDisableTurns);
     if (field == "MARRIED") return parseBool(value, player.married);
     if (field == "COLLEGE_GRADUATE") return parseBool(value, player.collegeGraduate);
     if (field == "USED_NIGHT_SCHOOL") return parseBool(value, player.usedNightSchool);
     if (field == "HAS_HOUSE") return parseBool(value, player.hasHouse);
     if (field == "RETIRED") return parseBool(value, player.retired);
+    if (field == "SKIP_NEXT_TURN") return parseBool(value, player.skipNextTurn);
 
     error = "Unknown player field: " + field;
     return false;
@@ -872,6 +903,14 @@ bool SaveManager::saveGame(const Game& game,
     writeDeckState(out, DECK_HOUSE, game.decks.deckState(DECK_HOUSE));
     writeDeckState(out, DECK_INVEST, game.decks.deckState(DECK_INVEST));
     writeDeckState(out, DECK_PET, game.decks.deckState(DECK_PET));
+    for (std::size_t i = 0; i < game.activeTraps.size(); ++i) {
+        const ActiveTrap& trap = game.activeTraps[i];
+        out << "TRAP\t" << trap.tileId << "\t"
+            << trap.ownerIndex << "\t"
+            << escapeField(sabotageTypeName(trap.effectType)) << "\t"
+            << trap.strengthLevel << "\t"
+            << boolText(trap.armed) << "\n";
+    }
     out << "END\tSAVE\n";
 
     if (!out.good()) {
@@ -1101,6 +1140,36 @@ bool SaveManager::loadGame(Game& game,
             continue;
         }
 
+        if (parts[0] == "TRAP") {
+            if (parts.size() != 6) {
+                error = "Invalid trap entry.";
+                return false;
+            }
+            ActiveTrap trap;
+            if (!parseInt(parts[1], trap.tileId) ||
+                !parseInt(parts[2], trap.ownerIndex) ||
+                !parseInt(parts[4], trap.strengthLevel) ||
+                !parseBool(parts[5], trap.armed)) {
+                error = "Invalid trap field.";
+                return false;
+            }
+            if (trap.tileId < 0 ||
+                trap.tileId >= TILE_COUNT ||
+                trap.ownerIndex < 0 ||
+                trap.ownerIndex >= static_cast<int>(data.players.size()) ||
+                trap.strengthLevel <= 0) {
+                error = "Trap entry is out of range.";
+                return false;
+            }
+            trap.effectType = sabotageTypeFromText(parts[3]);
+            if (sabotageTypeName(trap.effectType) != parts[3]) {
+                error = "Unknown trap sabotage type.";
+                return false;
+            }
+            data.activeTraps.push_back(trap);
+            continue;
+        }
+
         error = "Unknown save record type: " + parts[0];
         return false;
     }
@@ -1142,6 +1211,7 @@ bool SaveManager::loadGame(Game& game,
     game.assignedSaveFilename = data.assignedFilename;
     game.createdTime = data.createdTime;
     game.lastSavedTime = data.lastSavedTime;
+    game.activeTraps = data.activeTraps;
     game.decks.reset(game.rules, false);
 
     // The deck order and RNG state are restored after the high-level game data

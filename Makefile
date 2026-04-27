@@ -5,7 +5,8 @@ FS_LIBS ?=
 
 CORE_OBJS = game.o board.o player.o ui.o rules.o \
 		cards.o bank.o history.o spins.o save_manager.o \
-		cpu_player.o pong.o battleship.o hangman.o memory.o minesweeper.o
+		cpu_player.o sabotage.o sabotage_card.o \
+		pong.o battleship.o hangman.o memory.o minesweeper.o
 
 OBJS = main.o $(CORE_OBJS)
 DEBUG_OBJS = debug.o $(CORE_OBJS)
@@ -28,9 +29,11 @@ run-debug: debug
 	./debug
 
 # Dependencies
-debug.o: debug.cpp debug.h bank.hpp battleship.hpp board.hpp cards.hpp cpu_player.hpp game.hpp hangman.hpp memory.hpp minesweeper.hpp player.hpp pong.hpp random_service.hpp rules.hpp save_manager.hpp spins.hpp ui.h
-cpu_player.o: cpu_player.cpp cpu_player.hpp cards.hpp player.hpp random_service.hpp rules.hpp
+debug.o: debug.cpp debug.h bank.hpp battleship.hpp board.hpp cards.hpp cpu_player.hpp game.hpp hangman.hpp memory.hpp minesweeper.hpp player.hpp pong.hpp random_service.hpp rules.hpp sabotage.h sabotage_card.h save_manager.hpp spins.hpp ui.h
+cpu_player.o: cpu_player.cpp cpu_player.hpp cards.hpp player.hpp random_service.hpp rules.hpp sabotage_card.h
+sabotage.o: sabotage.cpp sabotage.h sabotage_card.h bank.hpp player.hpp random_service.hpp
+sabotage_card.o: sabotage_card.cpp sabotage_card.h
 hangman.o: hangman.cpp hangman.hpp ui.h
 memory.o: memory.cpp memory.hpp ui.h
-game.o: game.cpp game.hpp cpu_player.hpp hangman.hpp memory.hpp pong.hpp battleship.hpp minesweeper.hpp
+game.o: game.cpp game.hpp cpu_player.hpp sabotage.h sabotage_card.h hangman.hpp memory.hpp pong.hpp battleship.hpp minesweeper.hpp
 minesweeper.o: minesweeper.cpp minesweeper.hpp ui.h

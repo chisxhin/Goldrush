@@ -44,6 +44,16 @@ struct Player {
     int riskChoice = -1;
     PlayerType type = PlayerType::Human;
     CpuDifficulty cpuDifficulty = CpuDifficulty::Normal;
+    int sabotageDebt = 0;
+    int shieldCards = 0;
+    int insuranceUses = 0;
+    bool skipNextTurn = false;
+    int movementPenaltyTurns = 0;
+    int movementPenaltyPercent = 0;
+    int salaryReductionTurns = 0;
+    int salaryReductionPercent = 0;
+    int sabotageCooldown = 0;
+    int itemDisableTurns = 0;
 };
 
 char tokenForName(const std::string& name, int index);

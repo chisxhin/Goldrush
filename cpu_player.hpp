@@ -7,6 +7,7 @@
 #include "player.hpp"
 #include "random_service.hpp"
 #include "rules.hpp"
+#include "sabotage_card.h"
 
 struct CpuMinigameResult {
     int score;
@@ -25,6 +26,13 @@ public:
     int chooseRetirement(const Player& player);
     int chooseCareer(const Player& player, const std::vector<CareerCard>& choices);
     CpuMinigameResult playBlackTileMinigame(const Player& player, int minigameChoice);
+    bool shouldUseSabotage(const Player& player, int turnCounter);
+    int chooseSabotageTarget(const Player& player,
+                             const std::vector<Player>& players,
+                             int selfIndex);
+    SabotageType chooseSabotageType(const Player& player,
+                                    const Player& target,
+                                    int turnCounter);
 
 private:
     RandomService& rng;

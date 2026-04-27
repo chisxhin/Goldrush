@@ -14,10 +14,12 @@
 #include "random_service.hpp"
 #include "rules.hpp"
 #include "save_manager.hpp"
+#include "sabotage.h"
 #include "spins.hpp"
 #include "ui.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <ctime>
 #include <iostream>
 #include <limits>
@@ -505,25 +507,99 @@ void debugMinigames() {
 }
 
 void debugSabotage() {
-    std::cout << "\n===== SABOTAGE DEBUG =====\n";
-    std::cout << "No production sabotage feature API exists yet; using mock cash penalties.\n";
+    while (true) {
+        std::cout << "\n===== SABOTAGE DEBUG MENU =====\n"
+                  << "1. Test Trap Tile\n"
+                  << "2. Test Lawsuit\n"
+                  << "3. Test Traffic Jam\n"
+                  << "4. Test Steal Action Card\n"
+                  << "5. Test Forced Duel Minigame\n"
+                  << "6. Test Career Sabotage\n"
+                  << "7. Test Position Swap\n"
+                  << "8. Test Debt Trap\n"
+                  << "9. Test Shield Card\n"
+                  << "10. Test CPU Sabotage Decision\n"
+                  << "11. Return\n";
 
-    RuleSet rules = makeNormalRules();
-    Bank bank(rules);
-    Player attacker = makeDebugPlayer("Attacker", 0);
-    Player target = makeDebugPlayer("Target", 1);
-    target.cash = readInt("Target starting cash", 0, 200000, 25000);
+        const int choice = readInt("Choose an option", 1, 11, 1);
+        if (choice == 11) {
+            return;
+        }
 
-    std::cout << "Before sabotage-like penalty:\n";
-    printPlayerSummary(attacker, bank);
-    printPlayerSummary(target, bank);
+        RuleSet rules = makeNormalRules();
+        Bank bank(rules);
+        RandomService rng(8080 + static_cast<std::uint32_t>(choice));
+        SabotageManager manager(bank, rng);
+        std::vector<Player> players;
+        players.push_back(makeDebugPlayer("Attacker", 0));
+        players.push_back(makeDebugPlayer("Target", 1));
+        players[0].cash = 180000;
+        players[1].cash = 160000;
+        players[1].salary = 80000;
+        players[1].actionCards.push_back("Debug Bonus Card");
 
-    const int penalty = readInt("Penalty amount", 0, 250000, 75000);
-    const PaymentResult payment = bank.charge(target, penalty);
-    std::cout << "Applied mock penalty: " << describePayment(payment) << "\n";
-    std::cout << "After penalty:\n";
-    printPlayerSummary(target, bank);
-    pauseForEnter();
+        SabotageResult result;
+        if (choice == 1) {
+            ActiveTrap trap;
+            trap.tileId = 20;
+            trap.ownerIndex = 0;
+            trap.effectType = SabotageType::MoneyLoss;
+            trap.strengthLevel = 2;
+            trap.armed = true;
+            result = manager.triggerTrap(trap, players[1]);
+        } else if (choice == 2) {
+            result = manager.resolveLawsuit(players[0], players[1]);
+        } else if (choice == 3) {
+            result = manager.applyDirectSabotage(sabotageCardForType(SabotageType::MovementPenalty),
+                                                 players[0], players[1], players, 0, 1);
+        } else if (choice == 4) {
+            result = manager.applyDirectSabotage(sabotageCardForType(SabotageType::StealCard),
+                                                 players[0], players[1], players, 0, 1);
+        } else if (choice == 5) {
+            result = manager.resolveForcedDuel(players[0], players[1]);
+        } else if (choice == 6) {
+            result = manager.applyDirectSabotage(sabotageCardForType(SabotageType::CareerPenalty),
+                                                 players[0], players[1], players, 0, 1);
+        } else if (choice == 7) {
+            players[0].tile = 12;
+            players[1].tile = 72;
+            result = manager.applyDirectSabotage(sabotageCardForType(SabotageType::PositionSwap),
+                                                 players[0], players[1], players, 0, 1);
+        } else if (choice == 8) {
+            result = manager.applyDirectSabotage(sabotageCardForType(SabotageType::DebtIncrease),
+                                                 players[0], players[1], players, 0, 1);
+        } else if (choice == 9) {
+            players[1].shieldCards = 1;
+            result = manager.applyDirectSabotage(sabotageCardByName("Lawsuit"),
+                                                 players[0], players[1], players, 0, 1);
+        } else if (choice == 10) {
+            CpuController cpuController(rng);
+            players[0].type = PlayerType::CPU;
+            players[0].cpuDifficulty = CpuDifficulty::Hard;
+            const int targetIndex = cpuController.chooseSabotageTarget(players[0], players, 0);
+            const SabotageType type = cpuController.chooseSabotageType(players[0], players[1], 12);
+            std::cout << "CPU target index: " << targetIndex << "\n";
+            std::cout << "CPU sabotage type: " << sabotageTypeName(type) << "\n";
+            pauseForEnter();
+            continue;
+        }
+
+        std::cout << "Result: " << result.summary << "\n";
+        std::cout << "Attempted: " << (result.attempted ? "yes" : "no")
+                  << " | success: " << (result.success ? "yes" : "no")
+                  << " | blocked: " << (result.blocked ? "yes" : "no")
+                  << " | roll: " << result.roll << "\n";
+        printPlayerSummary(players[0], bank);
+        printPlayerSummary(players[1], bank);
+        std::cout << "Target states: shields " << players[1].shieldCards
+                  << ", insurance " << players[1].insuranceUses
+                  << ", skip " << (players[1].skipNextTurn ? "yes" : "no")
+                  << ", movement penalty " << players[1].movementPenaltyPercent
+                  << "%, salary reduction " << players[1].salaryReductionPercent
+                  << "% for " << players[1].salaryReductionTurns << " turns"
+                  << ", sabotage debt $" << players[1].sabotageDebt << "\n";
+        pauseForEnter();
+    }
 }
 
 void runDebugMenu() {
