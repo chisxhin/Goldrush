@@ -9,6 +9,7 @@
 #include "hangman.hpp"
 #include "memory.hpp"
 #include "minesweeper.hpp"
+#include "minigame_tutorials.h"
 #include "player.hpp"
 #include "pong.hpp"
 #include "random_service.hpp"
@@ -16,7 +17,10 @@
 #include "save_manager.hpp"
 #include "sabotage.h"
 #include "spins.hpp"
+#include "tile_display.h"
+#include "timer_display.h"
 #include "ui.h"
+#include "ui_helpers.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -120,7 +124,7 @@ std::string debugMovePlayer(Player& player, const Board& board, int steps) {
 
     std::ostringstream out;
     out << player.name << " starts on tile " << player.tile
-        << " [" << board.tileAt(player.tile).label << "]\n";
+        << " - " << getTileDisplayName(board.tileAt(player.tile)) << "\n";
 
     for (int step = 0; step < steps; ++step) {
         const int next = debugNextTile(board, player);
@@ -132,7 +136,7 @@ std::string debugMovePlayer(Player& player, const Board& board, int steps) {
         player.tile = next;
         const Tile& landed = board.tileAt(player.tile);
         out << "  Step " << (step + 1) << ": tile " << player.tile
-            << " [" << landed.label << "]";
+            << " - " << getTileDisplayName(landed);
         if (board.isStopSpace(landed)) {
             out << " STOP";
         }
@@ -187,6 +191,8 @@ std::string debugApplyActionEffect(Player& player,
             return "Marriage bonus paid $" + std::to_string(effect.amount) + ".";
         case ACTION_MOVE_SPACES:
             return debugMovePlayer(player, board, effect.amount);
+        case ACTION_DUEL_MINIGAME:
+            return "Would draw a random opponent and launch a production duel minigame in Game.";
         default:
             return "Unknown action effect.";
     }
@@ -506,6 +512,220 @@ void debugMinigames() {
     }
 }
 
+int simulateDebugCPUMinigamePerformance(Player& cpuPlayer, RandomService& rng) {
+    if (cpuPlayer.type != PlayerType::CPU) {
+        return rng.uniformInt(40, 85);
+    }
+
+    switch (cpuPlayer.cpuDifficulty) {
+        case CpuDifficulty::Easy:
+            return rng.uniformInt(20, 55);
+        case CpuDifficulty::Hard:
+            return rng.uniformInt(65, 95);
+        case CpuDifficulty::Normal:
+        default:
+            return rng.uniformInt(45, 75);
+    }
+}
+
+int chooseRandomOpponentIndex(int currentPlayer, const std::vector<Player>& players, RandomService& rng) {
+    std::vector<int> candidates;
+    for (std::size_t i = 0; i < players.size(); ++i) {
+        if (static_cast<int>(i) != currentPlayer && !players[i].retired) {
+            candidates.push_back(static_cast<int>(i));
+        }
+    }
+    if (candidates.empty()) {
+        return -1;
+    }
+    return candidates[static_cast<std::size_t>(rng.uniformInt(0, static_cast<int>(candidates.size()) - 1))];
+}
+
+void debugBlinkingIndicator() {
+    initialize_game_ui();
+    blinkIndicator("DEBUG INDICATOR: blinks twice, then holds solid", 2, 2000);
+    destroy_game_ui();
+    std::cout << "Blinking indicator test completed.\n";
+    pauseForEnter();
+}
+
+void debugMinigameTutorialPopup() {
+    initialize_game_ui();
+    showMinigameTutorial("Debug Tutorial",
+                         "Confirm the one-page tutorial explains the game before play starts.",
+                         "Press Enter to start after reading.",
+                         "The minigame does not begin until Enter is pressed.",
+                         "Rewards, penalties, sabotage, and investment notes are shown here.",
+                         has_colors());
+    destroy_game_ui();
+    std::cout << "Minigame tutorial popup test completed.\n";
+    pauseForEnter();
+}
+
+void debugCountdownTimer() {
+    initialize_game_ui();
+    displayCountdownTimer(5, has_colors());
+    destroy_game_ui();
+    std::cout << "Countdown timer test completed.\n";
+    pauseForEnter();
+}
+
+void debugDecisionPopup() {
+    initialize_game_ui();
+    showDecisionPopup("CPU 2",
+                      "Career Path",
+                      "CPU Difficulty: Normal. Reason: Career Path gives faster money growth early in the game.",
+                      has_colors(),
+                      false);
+    destroy_game_ui();
+    std::cout << "Decision popup test completed.\n";
+    pauseForEnter();
+}
+
+void debugTileDisplayNames() {
+    std::cout << "\n===== TILE DISPLAY NAME DEBUG =====\n";
+    Board board;
+    const std::vector<std::string> legend = board.tutorialLegend();
+    for (std::size_t i = 0; i < legend.size(); ++i) {
+        std::cout << "  " << legend[i] << "\n";
+    }
+    std::cout << "\nSample board spaces:\n";
+    for (int id = 0; id < TILE_COUNT; id += 8) {
+        const Tile& tile = board.tileAt(id);
+        std::cout << "  Space " << id << ": " << getTileDisplayName(tile) << "\n";
+    }
+    pauseForEnter();
+}
+
+void debugActionCardMinigameOpponentDraw() {
+    std::cout << "\n===== 2-PLAYER MINIGAME OPPONENT DRAW DEBUG =====\n";
+    RandomService rng(24680);
+    std::vector<Player> players;
+    players.push_back(makeDebugPlayer("Player 1", 0));
+    players.push_back(makeDebugPlayer("CPU Easy", 1));
+    players.push_back(makeDebugPlayer("CPU Hard", 2));
+    players.push_back(makeDebugPlayer("Player 4", 3));
+    players[1].type = PlayerType::CPU;
+    players[1].cpuDifficulty = CpuDifficulty::Easy;
+    players[2].type = PlayerType::CPU;
+    players[2].cpuDifficulty = CpuDifficulty::Hard;
+
+    const int currentPlayer = 0;
+    const int opponent = chooseRandomOpponentIndex(currentPlayer, players, rng);
+    if (opponent < 0) {
+        std::cout << "No valid opponent was available.\n";
+        pauseForEnter();
+        return;
+    }
+
+    std::cout << "Player 1 used a Duel Minigame Card!\n";
+    std::cout << "Random opponent draw begins...\n\n";
+    std::cout << "Opponent selected: " << players[static_cast<std::size_t>(opponent)].name << "\n";
+    std::cout << "Player 1 will play against " << players[static_cast<std::size_t>(opponent)].name << ".\n";
+    if (players[static_cast<std::size_t>(opponent)].type == PlayerType::CPU) {
+        const int score = simulateDebugCPUMinigamePerformance(players[static_cast<std::size_t>(opponent)], rng);
+        std::cout << "CPU difficulty: "
+                  << cpuDifficultyLabel(players[static_cast<std::size_t>(opponent)].cpuDifficulty)
+                  << "\n";
+        std::cout << "Simulated CPU performance score: " << score << "/100\n";
+    } else {
+        std::cout << "Opponent is human: the normal minigame controls would be used.\n";
+    }
+    pauseForEnter();
+}
+
+void debugCPUMinigameDifficulty() {
+    std::cout << "\n===== CPU MINIGAME DIFFICULTY DEBUG =====\n";
+    RandomService rng(13579);
+    std::vector<Player> cpus;
+    cpus.push_back(makeDebugPlayer("Easy CPU", 0));
+    cpus.push_back(makeDebugPlayer("Normal CPU", 1));
+    cpus.push_back(makeDebugPlayer("Hard CPU", 2));
+    cpus[0].type = PlayerType::CPU;
+    cpus[0].cpuDifficulty = CpuDifficulty::Easy;
+    cpus[1].type = PlayerType::CPU;
+    cpus[1].cpuDifficulty = CpuDifficulty::Normal;
+    cpus[2].type = PlayerType::CPU;
+    cpus[2].cpuDifficulty = CpuDifficulty::Hard;
+
+    for (std::size_t i = 0; i < cpus.size(); ++i) {
+        std::cout << cpus[i].name << " (" << cpuDifficultyLabel(cpus[i].cpuDifficulty) << "): ";
+        for (int run = 0; run < 5; ++run) {
+            std::cout << simulateDebugCPUMinigamePerformance(cpus[i], rng)
+                      << (run == 4 ? "" : ", ");
+        }
+        std::cout << "\n";
+    }
+    pauseForEnter();
+}
+
+void debugDetailedTurnOutput() {
+    Board board;
+    Player player = makeDebugPlayer("Player 1", 0);
+    player.tile = 12;
+    player.cash = 45000;
+    const int roll = 5;
+    const int startTile = player.tile;
+    const int endTile = 17;
+    const Tile& start = board.tileAt(startTile);
+    const Tile& end = board.tileAt(endTile);
+
+    std::vector<std::string> lines;
+    lines.push_back(player.name + "'s Turn");
+    lines.push_back("Player Type: " + playerTypeLabel(player.type));
+    lines.push_back("Current Money: $" + std::to_string(player.cash));
+    lines.push_back("Current Position: Space " + std::to_string(startTile) + " - " + getTileDisplayName(start));
+    lines.push_back(player.name + " rolls the dice...");
+    lines.push_back(player.name + " rolled a " + std::to_string(roll) + ".");
+    lines.push_back(player.name + " moves from Space " + std::to_string(startTile) +
+                    " to Space " + std::to_string(endTile) + ".");
+    lines.push_back(player.name + " landed on " + getTileDisplayName(end) + ".");
+    lines.push_back("Effect: debug preview of the tile effect explanation.");
+    lines.push_back("New Money: $65000");
+
+    initialize_game_ui();
+    showPopupMessage("Detailed Turn Output", lines, has_colors(), false);
+    destroy_game_ui();
+    std::cout << "Detailed turn output popup test completed.\n";
+    pauseForEnter();
+}
+
+void debugUiPacing() {
+    while (true) {
+        std::cout << "\n===== UI / PACING DEBUG MENU =====\n"
+                  << "1. Test blinking indicator\n"
+                  << "2. Test minigame tutorial popup\n"
+                  << "3. Test countdown timer text\n"
+                  << "4. Test decision popup\n"
+                  << "5. Test tile full-name display\n"
+                  << "6. Test 2-player action-card minigame opponent draw\n"
+                  << "7. Test CPU minigame difficulty behavior\n"
+                  << "8. Test detailed turn output\n"
+                  << "9. Return\n";
+
+        const int choice = readMenuChoice(1, 9);
+        if (choice == 1) {
+            debugBlinkingIndicator();
+        } else if (choice == 2) {
+            debugMinigameTutorialPopup();
+        } else if (choice == 3) {
+            debugCountdownTimer();
+        } else if (choice == 4) {
+            debugDecisionPopup();
+        } else if (choice == 5) {
+            debugTileDisplayNames();
+        } else if (choice == 6) {
+            debugActionCardMinigameOpponentDraw();
+        } else if (choice == 7) {
+            debugCPUMinigameDifficulty();
+        } else if (choice == 8) {
+            debugDetailedTurnOutput();
+        } else if (choice == 9) {
+            return;
+        }
+    }
+}
+
 void debugSabotage() {
     while (true) {
         std::cout << "\n===== SABOTAGE DEBUG MENU =====\n"
@@ -613,9 +833,10 @@ void runDebugMenu() {
                   << "6. Test CPU player decision-making\n"
                   << "7. Test minigames\n"
                   << "8. Test sabotage features\n"
-                  << "9. Exit\n";
+                  << "9. Test UI / pacing features\n"
+                  << "10. Exit\n";
 
-        const int choice = readMenuChoice(1, 9);
+        const int choice = readMenuChoice(1, 10);
         switch (choice) {
             case 1:
                 debugDiceRoll();
@@ -642,6 +863,9 @@ void runDebugMenu() {
                 debugSabotage();
                 break;
             case 9:
+                debugUiPacing();
+                break;
+            case 10:
                 std::cout << "Exiting debug menu.\n";
                 return;
             default:

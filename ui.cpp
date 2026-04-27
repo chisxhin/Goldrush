@@ -135,7 +135,7 @@ void draw_board_ui(WINDOW* boardWin, const Board& board, const std::vector<Playe
             pointerChar = 'v';
         }
 
-        const int attrs = A_BOLD | A_BLINK;
+        const int attrs = A_BOLD;
         if (has_colors()) {
             wattron(boardWin, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | attrs);
         } else {
@@ -187,14 +187,17 @@ void draw_sidebar_ui(WINDOW* panelWin,
         wattroff(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
 
         wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
-        mvwprintw(panelWin, 5, 2, "$%d L:%d S:%s", player.cash, player.loans, player.married ? "Y" : "N");
-        mvwprintw(panelWin, 6, 2, "K:%d P:%d I:%s", player.kids, static_cast<int>(player.petCards.size()), invest.c_str());
-        mvwprintw(panelWin, 7, 2, "J:%-.18s", player.job.c_str());
-        mvwprintw(panelWin, 8, 2, "Home:%-.12s", home.c_str());
+        mvwprintw(panelWin, 5, 2, "Cash:%d Loans:%d", player.cash, player.loans);
+        mvwprintw(panelWin, 6, 2, "Married:%s Kids:%d Pets:%d",
+                  player.married ? "Y" : "N",
+                  player.kids,
+                  static_cast<int>(player.petCards.size()));
+        mvwprintw(panelWin, 7, 2, "Invest:%s Job:%-.14s", invest.c_str(), player.job.c_str());
+        mvwprintw(panelWin, 8, 2, "Home:%-.26s", home.c_str());
         if (player.type == PlayerType::CPU) {
-            mvwprintw(panelWin, 9, 2, "AI:%-.12s", cpuDifficultyLabel(player.cpuDifficulty).c_str());
+            mvwprintw(panelWin, 9, 2, "CPU Difficulty:%-.12s", cpuDifficultyLabel(player.cpuDifficulty).c_str());
         } else {
-            mvwprintw(panelWin, 9, 2, "Def S:%d I:%d", player.shieldCards, player.insuranceUses);
+            mvwprintw(panelWin, 9, 2, "Defense Shields:%d Insurance:%d", player.shieldCards, player.insuranceUses);
         }
         if (player.sabotageCooldown > 0 || player.skipNextTurn || player.salaryReductionTurns > 0) {
             mvwprintw(panelWin, 10, 2, "Sab CD:%d Skip:%s Sal:%d",

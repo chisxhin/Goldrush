@@ -6,7 +6,9 @@
 #include <string>
 #include <vector>
 
+#include "minigame_tutorials.h"
 #include "ui.h"
+#include "ui_helpers.h"
 
 namespace {
 const std::vector<std::string> PONG_TITLE = {
@@ -91,7 +93,7 @@ void drawFeedbackBanner(WINDOW* win,
     }
 
     const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
-    const int attrs = A_BOLD | A_BLINK;
+    const int attrs = A_BOLD;
     if (hasColor) {
         wattron(win, COLOR_PAIR(colorPair) | attrs);
     } else {
@@ -115,6 +117,13 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
     result.playerScore = 0;
     result.cpuScore = 0;
     result.abandoned = false;
+
+    showMinigameTutorial("Pong",
+                         "Return the ball with your paddle for as long as possible.",
+                         "W moves up, S moves down, X serves, Q exits.",
+                         "Keep returning the ball. One miss ends the run.",
+                         "Each successful return pays $100. Exiting early pays nothing.",
+                         hasColor);
 
     int screenH = 0;
     int screenW = 0;
@@ -219,7 +228,7 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
             wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
         }
 
-        mvwprintw(overlay, arenaBottom + 2, arenaLeft, "UP: A  DOWN: Z  START: X");
+        mvwprintw(overlay, arenaBottom + 2, arenaLeft, "UP: W  DOWN: S  START: X");
         mvwprintw(overlay, arenaBottom + 2, arenaRight - 20, "RIGHT SIDE: CPU");
 
         if (waitingForServe) {
@@ -259,9 +268,9 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
             continue;
         }
 
-        if (ch == 'a' || ch == 'A') {
+        if (ch == 'w' || ch == 'W') {
             playerPaddle.centerY -= 1.2f;
-        } else if (ch == 'z' || ch == 'Z') {
+        } else if (ch == 's' || ch == 'S') {
             playerPaddle.centerY += 1.2f;
         }
 
@@ -296,8 +305,17 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
             ball.vx = std::fabs(ball.vx) + 0.03f;
             ball.vy += (ball.y - playerPaddle.centerY) * 0.08f;
             feedbackText = "RETURN! +$100";
-            feedbackFrames = 26;
             feedbackPositive = true;
+            blinkIndicator(overlay,
+                           arenaTop + 2,
+                           arenaLeft + (arenaWidth - static_cast<int>(feedbackText.size())) / 2,
+                           feedbackText,
+                           hasColor,
+                           GOLDRUSH_BLACK_FOREST,
+                           2,
+                           2000,
+                           static_cast<int>(feedbackText.size()));
+            feedbackFrames = 0;
         }
 
         const float cpuTop = cpuPaddle.centerY - static_cast<float>(paddleHalfHeight);
@@ -314,12 +332,30 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
             ++result.cpuScore;
             gameOver = true;
             feedbackText = "MISS! RUN ENDS";
-            feedbackFrames = 9999;
             feedbackPositive = false;
+            blinkIndicator(overlay,
+                           arenaTop + 2,
+                           arenaLeft + (arenaWidth - static_cast<int>(feedbackText.size())) / 2,
+                           feedbackText,
+                           hasColor,
+                           GOLDRUSH_GOLD_TERRA,
+                           2,
+                           2000,
+                           static_cast<int>(feedbackText.size()));
+            feedbackFrames = 0;
         } else if (ball.x > static_cast<float>(arenaRight - 1)) {
             feedbackText = "CPU MISSED - SERVE AGAIN";
-            feedbackFrames = 34;
             feedbackPositive = true;
+            blinkIndicator(overlay,
+                           arenaTop + 2,
+                           arenaLeft + (arenaWidth - static_cast<int>(feedbackText.size())) / 2,
+                           feedbackText,
+                           hasColor,
+                           GOLDRUSH_BLACK_FOREST,
+                           2,
+                           2000,
+                           static_cast<int>(feedbackText.size()));
+            feedbackFrames = 0;
             resetBall(ball,
                       static_cast<float>(arenaLeft + arenaWidth / 2),
                       static_cast<float>((arenaTop + arenaBottom) / 2),

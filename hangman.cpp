@@ -1,5 +1,7 @@
 #include "hangman.hpp"
+#include "minigame_tutorials.h"
 #include "ui.h"
+#include "ui_helpers.h"
 
 #include <ncurses.h>
 #include <algorithm>
@@ -254,29 +256,10 @@ void flashFeedback(WINDOW* win,
                    const std::string& text,
                    bool positive,
                    bool hasColor) {
-    const int lineWidth = arenaWidth - 6;
-    const int x = arenaLeft + 3;
     const int textX = arenaLeft + (arenaWidth - static_cast<int>(text.size())) / 2;
     const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
 
-    for (int flash = 0; flash < 4; ++flash) {
-        mvwprintw(win, y, x, "%-*s", lineWidth, "");
-        if (flash % 2 == 0) {
-            if (hasColor) {
-                wattron(win, COLOR_PAIR(colorPair) | A_BOLD | A_BLINK);
-            } else {
-                wattron(win, A_REVERSE | A_BOLD);
-            }
-            mvwprintw(win, y, textX, "%s", text.c_str());
-            if (hasColor) {
-                wattroff(win, COLOR_PAIR(colorPair) | A_BOLD | A_BLINK);
-            } else {
-                wattroff(win, A_REVERSE | A_BOLD);
-            }
-        }
-        wrefresh(win);
-        napms(110);
-    }
+    blinkIndicator(win, y, textX, text, hasColor, colorPair, 2, 2000, static_cast<int>(text.size()));
 }
 
 } // anonymous namespace
@@ -284,9 +267,16 @@ void flashFeedback(WINDOW* win,
 HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) {
     HangmanResult res;
     res.won = false;
-    res.attemptsLeft = 10;
+    res.attemptsLeft = 8;
     res.lettersGuessed = 0;
     res.abandoned = false;
+
+    showMinigameTutorial("Hangman",
+                         "Guess the hidden word one letter at a time.",
+                         "Type A-Z to guess, Q exits.",
+                         "Reveal the full word before 10 wrong guesses.",
+                         "Each revealed letter slot pays $100. Exiting early pays nothing.",
+                         hasColor);
 
     WINDOW* win = newwin(0, 0, 0, 0);
     keypad(win, TRUE);
@@ -395,16 +385,21 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
             const std::string winLine3 = "Letters revealed: " + std::to_string(res.lettersGuessed) +
                                          "  |  Earned $" + std::to_string(res.lettersGuessed * 100);
             const std::string winLine4 = "Press ENTER to continue.";
-            wattron(win, A_BLINK);
-            mvwprintw(win, arenaCenterY - 2, arenaLeft + (arenaWidth - static_cast<int>(winLine1.size())) / 2,
-                      "%s", winLine1.c_str());
-            wattroff(win, A_BLINK);
             mvwprintw(win, arenaCenterY - 1, arenaLeft + (arenaWidth - static_cast<int>(winLine2.size())) / 2,
                       "%s", winLine2.c_str());
             mvwprintw(win, arenaCenterY, arenaLeft + (arenaWidth - static_cast<int>(winLine3.size())) / 2,
                       "%s", winLine3.c_str());
             mvwprintw(win, arenaCenterY + 2, arenaLeft + (arenaWidth - static_cast<int>(winLine4.size())) / 2,
                       "%s", winLine4.c_str());
+            blinkIndicator(win,
+                           arenaCenterY - 2,
+                           arenaLeft + (arenaWidth - static_cast<int>(winLine1.size())) / 2,
+                           winLine1,
+                           hasColor,
+                           GOLDRUSH_BLACK_FOREST,
+                           2,
+                           2000,
+                           static_cast<int>(winLine1.size()));
             if (hasColor) {
                 wattroff(win, COLOR_PAIR(GOLDRUSH_BLACK_FOREST) | A_BOLD);
             }
@@ -443,16 +438,21 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
             const std::string loseLine3 = "Letters revealed: " + std::to_string(res.lettersGuessed) +
                                           "  |  Earned $" + std::to_string(res.lettersGuessed * 100);
             const std::string loseLine4 = "Press ENTER to continue.";
-            wattron(win, A_BLINK);
-            mvwprintw(win, arenaCenterY - 2, arenaLeft + (arenaWidth - static_cast<int>(loseLine1.size())) / 2,
-                      "%s", loseLine1.c_str());
-            wattroff(win, A_BLINK);
             mvwprintw(win, arenaCenterY - 1, arenaLeft + (arenaWidth - static_cast<int>(loseLine2.size())) / 2,
                       "%s", loseLine2.c_str());
             mvwprintw(win, arenaCenterY, arenaLeft + (arenaWidth - static_cast<int>(loseLine3.size())) / 2,
                       "%s", loseLine3.c_str());
             mvwprintw(win, arenaCenterY + 2, arenaLeft + (arenaWidth - static_cast<int>(loseLine4.size())) / 2,
                       "%s", loseLine4.c_str());
+            blinkIndicator(win,
+                           arenaCenterY - 2,
+                           arenaLeft + (arenaWidth - static_cast<int>(loseLine1.size())) / 2,
+                           loseLine1,
+                           hasColor,
+                           GOLDRUSH_GOLD_TERRA,
+                           2,
+                           2000,
+                           static_cast<int>(loseLine1.size()));
             if (hasColor) {
                 wattroff(win, COLOR_PAIR(GOLDRUSH_GOLD_TERRA) | A_BOLD);
             }

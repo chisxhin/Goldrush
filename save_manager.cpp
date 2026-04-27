@@ -398,6 +398,22 @@ SerializedDeckState& deckStateForSlot(LoadedGameState& data, DeckSlot slot) {
     }
 }
 
+bool deckStateContainsCard(const SerializedDeckState& state, const std::string& id) {
+    return std::find(state.drawIds.begin(), state.drawIds.end(), id) != state.drawIds.end() ||
+           std::find(state.discardIds.begin(), state.discardIds.end(), id) != state.discardIds.end();
+}
+
+void migrateLoadedDeckState(LoadedGameState& data, int saveVersion) {
+    if (saveVersion >= 5) {
+        return;
+    }
+
+    const std::string duelCardId = "action-duel-minigame";
+    if (!deckStateContainsCard(data.actionDeck, duelCardId)) {
+        data.actionDeck.drawIds.push_back(duelCardId);
+    }
+}
+
 void writeDeckState(std::ofstream& out,
                     DeckSlot slot,
                     const SerializedDeckState& state) {
@@ -1213,6 +1229,7 @@ bool SaveManager::loadGame(Game& game,
     game.lastSavedTime = data.lastSavedTime;
     game.activeTraps = data.activeTraps;
     game.decks.reset(game.rules, false);
+    migrateLoadedDeckState(data, version);
 
     // The deck order and RNG state are restored after the high-level game data
     // so future draws and rolls continue from the exact same timeline.

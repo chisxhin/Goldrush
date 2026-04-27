@@ -2,6 +2,31 @@
 
 #include <algorithm>
 
+namespace {
+int cpuDuelScore(const Player& player, RandomService& rng) {
+    if (player.type != PlayerType::CPU) {
+        return rng.uniformInt(40, 85);
+    }
+
+    switch (player.cpuDifficulty) {
+        case CpuDifficulty::Easy:
+            return rng.uniformInt(20, 55);
+        case CpuDifficulty::Hard:
+            return rng.uniformInt(65, 95);
+        case CpuDifficulty::Normal:
+        default:
+            return rng.uniformInt(45, 75);
+    }
+}
+
+std::string duelProfileText(const Player& player) {
+    if (player.type != PlayerType::CPU) {
+        return "Human controlled";
+    }
+    return "CPU difficulty: " + cpuDifficultyLabel(player.cpuDifficulty);
+}
+}  // namespace
+
 SabotageManager::SabotageManager(Bank& bankRef, RandomService& random)
     : bank(bankRef),
       rng(random) {
@@ -105,8 +130,8 @@ SabotageResult SabotageManager::resolveLawsuit(Player& attacker, Player& target)
 SabotageResult SabotageManager::resolveForcedDuel(Player& attacker, Player& target) {
     SabotageResult result;
     result.attempted = true;
-    const int attackerScore = rng.roll10() + rng.roll10();
-    const int targetScore = rng.roll10() + rng.roll10();
+    const int attackerScore = cpuDuelScore(attacker, rng);
+    const int targetScore = cpuDuelScore(target, rng);
     result.roll = attackerScore;
     const int pot = 40000;
 
@@ -117,7 +142,8 @@ SabotageResult SabotageManager::resolveForcedDuel(Player& attacker, Player& targ
         result.amount = pot;
         result.summary = attacker.name + " won the duel minigame " +
                          std::to_string(attackerScore) + "-" + std::to_string(targetScore) +
-                         " and took $" + std::to_string(pot) + ".";
+                         " and took $" + std::to_string(pot) + ". " +
+                         duelProfileText(attacker) + " vs " + duelProfileText(target) + ".";
         if (payment.loansTaken > 0) {
             result.summary += " Auto-loans: " + std::to_string(payment.loansTaken) + ".";
         }
@@ -128,7 +154,8 @@ SabotageResult SabotageManager::resolveForcedDuel(Player& attacker, Player& targ
         result.amount = pot / 2;
         result.summary = target.name + " defended the duel minigame " +
                          std::to_string(targetScore) + "-" + std::to_string(attackerScore) +
-                         " and collected $" + std::to_string(pot / 2) + ".";
+                         " and collected $" + std::to_string(pot / 2) + ". " +
+                         duelProfileText(attacker) + " vs " + duelProfileText(target) + ".";
         if (payment.loansTaken > 0) {
             result.summary += " Auto-loans: " + std::to_string(payment.loansTaken) + ".";
         }

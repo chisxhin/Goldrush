@@ -10,3 +10,4 @@ void debugLoadSystem();
 void debugCPUDecision();
 void debugMinigames();
 void debugSabotage();
+void debugUiPacing();

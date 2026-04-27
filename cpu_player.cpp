@@ -114,32 +114,32 @@ int CpuController::chooseCareer(const Player& player, const std::vector<CareerCa
 
 CpuMinigameResult CpuController::playBlackTileMinigame(const Player& player, int minigameChoice) {
     const int rank = difficultyRank(player);
-    const int baseChance = rank == 0 ? 35 : (rank == 1 ? 55 : 75);
-    const int scoreCap = rank == 0 ? 4 : (rank == 1 ? 7 : 10);
+    const int minScore = rank == 0 ? 0 : (rank == 1 ? 3 : 6);
+    const int maxScore = rank == 0 ? 5 : (rank == 1 ? 8 : 12);
     CpuMinigameResult result;
-    result.success = chance(baseChance);
-    result.score = result.success
-        ? rng.uniformInt(std::max(1, scoreCap / 2), scoreCap)
-        : rng.uniformInt(0, std::max(1, scoreCap / 2));
+    result.score = rng.uniformInt(minScore, maxScore);
+    result.success = result.score >= (rank == 0 ? 3 : (rank == 1 ? 5 : 8));
+
+    const std::string difficultyText = cpuDifficultyLabel(player.cpuDifficulty) + " CPU: ";
 
     switch (minigameChoice) {
         case 0:
-            result.summary = "Pong returns: " + std::to_string(result.score);
+            result.summary = difficultyText + "Pong returns: " + std::to_string(result.score);
             break;
         case 1:
-            result.summary = "Battleship ships destroyed: " + std::to_string(result.score);
+            result.summary = difficultyText + "Battleship ships destroyed: " + std::to_string(result.score);
             break;
         case 2:
-            result.summary = "Hangman letters revealed: " + std::to_string(result.score);
+            result.summary = difficultyText + "Hangman letters revealed: " + std::to_string(result.score);
             break;
         case 3:
-            result.summary = "Memory pairs matched: " + std::to_string(std::min(result.score, 8));
             result.score = std::min(result.score, 8);
+            result.summary = difficultyText + "Memory pairs matched: " + std::to_string(result.score);
             break;
         case 4:
         default:
-            result.summary = "Minesweeper safe tiles: " + std::to_string(std::min(result.score + 2, 15));
-            result.score = std::min(result.score + 2, 15);
+            result.score = std::min(result.score + (rank == 2 ? 4 : 2), 15);
+            result.summary = difficultyText + "Minesweeper safe tiles: " + std::to_string(result.score);
             break;
     }
     return result;

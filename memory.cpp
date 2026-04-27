@@ -1,5 +1,8 @@
 #include "memory.hpp"
+#include "minigame_tutorials.h"
+#include "timer_display.h"
 #include "ui.h"
+#include "ui_helpers.h"
 
 #include <ncurses.h>
 #include <cstring>
@@ -111,24 +114,7 @@ void flashFeedback(WINDOW* win,
     const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
     const int textX = (screenW - static_cast<int>(text.size())) / 2;
 
-    for (int flash = 0; flash < 4; ++flash) {
-        mvwprintw(win, y, 2, "%-*s", screenW - 4, "");
-        if (flash % 2 == 0) {
-            if (hasColor) {
-                wattron(win, COLOR_PAIR(colorPair) | A_BOLD | A_BLINK);
-            } else {
-                wattron(win, A_REVERSE | A_BOLD);
-            }
-            mvwprintw(win, y, textX, "%s", text.c_str());
-            if (hasColor) {
-                wattroff(win, COLOR_PAIR(colorPair) | A_BOLD | A_BLINK);
-            } else {
-                wattroff(win, A_REVERSE | A_BOLD);
-            }
-        }
-        wrefresh(win);
-        napms(120);
-    }
+    blinkIndicator(win, y, textX, text, hasColor, colorPair, 2, 2000, static_cast<int>(text.size()));
 }
 
 } // anonymous namespace
@@ -139,6 +125,13 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
     result.livesRemaining = STARTING_LIVES;
     result.abandoned = false;
     result.won = false;
+
+    showMinigameTutorial("Memory Match",
+                         "Memorize the grid, then find all matching pairs.",
+                         "Arrow keys move, Enter/Space selects, H reveals help, Q exits.",
+                         "Match all 8 pairs before running out of lives.",
+                         "Each pair pays $100. Clearing the board adds a $200 bonus.",
+                         hasColor);
     
     WINDOW* overlay = newwin(0, 0, 0, 0);
     keypad(overlay, TRUE);
@@ -230,8 +223,15 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
                 }
             }
             
-            mvwprintw(overlay, arenaBottom - 4, (screenW - 30) / 2, 
-                      "Memorize the positions! 5 seconds...");
+            const int remaining = std::max(0, 5 - static_cast<int>(std::time(nullptr) - memorizationStart));
+            const std::string timer = countdownTimerText(remaining);
+            mvwprintw(overlay, arenaBottom - 4, (screenW - 30) / 2,
+                      "Memorize the positions!");
+            drawCountdownTimer(overlay,
+                               arenaBottom - 3,
+                               (screenW - static_cast<int>(timer.size())) / 2,
+                               remaining,
+                               hasColor);
             wrefresh(overlay);
             
             if (std::time(nullptr) - memorizationStart >= 5) {
@@ -363,21 +363,33 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
     
     if (result.won) {
         if (hasColor) wattron(overlay, COLOR_PAIR(GOLDRUSH_BLACK_FOREST) | A_BOLD);
-        wattron(overlay, A_BLINK);
-        mvwprintw(overlay, screenH/2 - 2, (screenW - 30) / 2, "VICTORY!");
-        wattroff(overlay, A_BLINK);
         mvwprintw(overlay, screenH/2 - 1, (screenW - 50) / 2, "You matched all %d pairs!", TOTAL_PAIRS);
         mvwprintw(overlay, screenH/2, (screenW - 46) / 2, "Lives remaining: %d  |  Earned $1000", result.livesRemaining);
+        blinkIndicator(overlay,
+                       screenH / 2 - 2,
+                       (screenW - 8) / 2,
+                       "VICTORY!",
+                       hasColor,
+                       GOLDRUSH_BLACK_FOREST,
+                       2,
+                       2000,
+                       8);
         if (hasColor) wattroff(overlay, COLOR_PAIR(GOLDRUSH_BLACK_FOREST) | A_BOLD);
     } else if (result.abandoned) {
         mvwprintw(overlay, screenH/2 - 1, (screenW - 30) / 2, "Game abandoned.");
     } else {
         if (hasColor) wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_TERRA) | A_BOLD);
-        wattron(overlay, A_BLINK);
-        mvwprintw(overlay, screenH/2 - 2, (screenW - 30) / 2, "GAME OVER!");
-        wattroff(overlay, A_BLINK);
         mvwprintw(overlay, screenH/2 - 1, (screenW - 45) / 2, "You ran out of lives!");
         mvwprintw(overlay, screenH/2, (screenW - 46) / 2, "Pairs matched: %d/8  |  Earned $%d", result.pairsMatched, result.pairsMatched * 100);
+        blinkIndicator(overlay,
+                       screenH / 2 - 2,
+                       (screenW - 10) / 2,
+                       "GAME OVER!",
+                       hasColor,
+                       GOLDRUSH_GOLD_TERRA,
+                       2,
+                       2000,
+                       10);
         if (hasColor) wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_TERRA) | A_BOLD);
     }
     

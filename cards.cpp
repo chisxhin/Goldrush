@@ -130,6 +130,9 @@ std::vector<ActionCard> actionPrototypes() {
     cards.push_back(makeActionCard("action-unexpected-bill", "Unexpected Bill",
                                    "Pay an emergency household expense.",
                                    makeActionEffect(ACTION_PAY_CASH, 30000, true), false));
+    cards.push_back(makeActionCard("action-duel-minigame", "Duel Minigame Card",
+                                   "Draw a random opponent, play a minigame, and win money if your score is higher.",
+                                   makeActionEffect(ACTION_DUEL_MINIGAME, 0, false), false));
 
     std::vector<ActionRollOutcome> casinoNight;
     casinoNight.push_back(makeRollOutcome(makeOddCondition(),

@@ -4,9 +4,12 @@
 #include "hangman.hpp"
 #include "memory.hpp"
 #include "minesweeper.hpp"
+#include "tile_display.h"
+#include "timer_display.h"
 #include "save_manager.hpp"
 #include "spins.hpp"
 #include "ui.h"
+#include "ui_helpers.h"
 
 #include <algorithm>
 #include <chrono>
@@ -68,33 +71,6 @@ std::string saveMenuStatusText(const SaveFileInfo& info) {
     return "Legacy save without a persistent game ID.";
 }
 
-std::string tileKindText(TileKind kind) {
-    switch (kind) {
-        case TILE_BLACK: return "Action";
-        case TILE_START: return "Start";
-        case TILE_SPLIT_START: return "Start split";
-        case TILE_COLLEGE: return "College";
-        case TILE_CAREER: return "Career";
-        case TILE_GRADUATION: return "Graduation";
-        case TILE_MARRIAGE: return "Marriage";
-        case TILE_SPLIT_FAMILY: return "Family split";
-        case TILE_FAMILY: return "Family";
-        case TILE_NIGHT_SCHOOL: return "Night School";
-        case TILE_SPLIT_RISK: return "Risk split";
-        case TILE_SAFE: return "Safe";
-        case TILE_RISKY: return "Risky";
-        case TILE_SPIN_AGAIN: return "Spin Again";
-        case TILE_CAREER_2: return "Promotion";
-        case TILE_PAYDAY: return "Payday";
-        case TILE_BABY: return "Baby";
-        case TILE_RETIREMENT: return "Retirement";
-        case TILE_HOUSE: return "House";
-        case TILE_EMPTY:
-        default:
-            return "Open road";
-    }
-}
-
 std::string playerRouteText(const Player& player) {
     std::string route;
     if (player.startChoice == 0) {
@@ -120,26 +96,10 @@ std::string playerRouteText(const Player& player) {
     return route;
 }
 
-void drawPopupPulse(WINDOW* popup,
-                    int y,
-                    int x,
-                    const std::string& text,
-                    int colorPair,
-                    bool hasColor) {
-    const int attrs = A_BOLD | A_BLINK;
-    if (hasColor) {
-        wattron(popup, COLOR_PAIR(colorPair) | attrs);
-    } else {
-        wattron(popup, A_REVERSE | A_BOLD);
-    }
-    mvwprintw(popup, y, x, "%s", text.c_str());
-    if (hasColor) {
-        wattroff(popup, COLOR_PAIR(colorPair) | attrs);
-    } else {
-        wattroff(popup, A_REVERSE | A_BOLD);
-    }
 }
-}
+
+std::string cpuReasonForAction(const Player& player, const std::string& action);
+std::string describeTileEffectText(const Tile& tile);
 
 Game::Game()
     : rules(makeNormalRules()),
@@ -320,36 +280,18 @@ void Game::drawSetupTitle() const {
 }
 
 void Game::flashSpinResult(const std::string& title, int value) const {
-    const int flashPairs[] = {
-        GOLDRUSH_PLAYER_ONE,
-        GOLDRUSH_PLAYER_TWO,
-        GOLDRUSH_PLAYER_THREE,
-        GOLDRUSH_PLAYER_FOUR
-    };
-
-    for (int flash = 0; flash < 4; ++flash) {
-        werase(msgWin);
-        box(msgWin, 0, 0);
-        mvwprintw(msgWin, 1, 2, "%s", title.c_str());
-
-        int colorPair = flashPairs[flash % 4];
-        if (hasColor) {
-            wattron(msgWin, COLOR_PAIR(colorPair) | A_BOLD | ((flash % 2 == 0) ? A_BLINK : 0));
-        } else if (flash % 2 == 0) {
-            wattron(msgWin, A_REVERSE | A_BOLD);
-        }
-
-        mvwprintw(msgWin, 2, 2, "Spin result: %d!", value);
-
-        if (hasColor) {
-            wattroff(msgWin, COLOR_PAIR(colorPair) | A_BOLD | ((flash % 2 == 0) ? A_BLINK : 0));
-        } else if (flash % 2 == 0) {
-            wattroff(msgWin, A_REVERSE | A_BOLD);
-        }
-
-        wrefresh(msgWin);
-        napms(130);
-    }
+    werase(msgWin);
+    box(msgWin, 0, 0);
+    mvwprintw(msgWin, 1, 2, "%s", title.c_str());
+    blinkIndicator(msgWin,
+                   2,
+                   2,
+                   "Spin result: " + std::to_string(value) + "!",
+                   hasColor,
+                   GOLDRUSH_GOLD_SAND,
+                   2,
+                   2000,
+                   MSG_W - 4);
 }
 
 bool Game::promptForFilename(const std::string& action,
@@ -763,8 +705,10 @@ void Game::showTutorial() {
     pages[0].push_back("College/Career, Family/Life, and Safe/Risky are branch decisions.");
     pages[0].push_back("Choosing College charges tuition immediately before that route begins.");
     pages[0].push_back("Paydays add salary. Action cards shake up your money.");
+    pages[0].push_back("Investment cards pay when any spinner result matches your number.");
+    pages[0].push_back("Sabotage uses B: traps, lawsuits, traffic jams, shields, and insurance.");
     pages[0].push_back("Marriage, babies, and house sales use special event spins.");
-    pages[0].push_back("Retirement lets you choose MM or CA and awards order bonuses.");
+    pages[0].push_back("Retirement lets you choose Millionaire Mansion (MM) or Countryside Acres (CA).");
     pages[0].push_back("During turns: B sabotage/defense, TAB scoreboard, G tile guide, K controls.");
 
     std::vector<std::string> legend = board.tutorialLegend();
@@ -837,8 +781,8 @@ void Game::showScoreboardPopup() const {
     applyWindowBg(popup);
     box(popup, 0, 0);
 
-    drawPopupPulse(popup, 1, 2, "Scoreboard", GOLDRUSH_GOLD_SAND, hasColor);
-    mvwprintw(popup, 2, 2, "Rank  Player          Type      Tile        Cash       Loans      Worth est.  Route");
+    blinkIndicator(popup, 1, 2, "Scoreboard", hasColor, GOLDRUSH_GOLD_SAND, 2, 0, popupW - 4);
+    mvwprintw(popup, 2, 2, "Rank  Player          Type      Tile / Space                 Cash       Loans      Worth est.");
 
     std::vector<int> order;
     for (size_t i = 0; i < players.size(); ++i) {
@@ -854,8 +798,7 @@ void Game::showScoreboardPopup() const {
         const Tile& tile = board.tileAt(player.tile);
         const int y = 4 + static_cast<int>(row);
         const std::string name = clipMenuText(player.name, 14);
-        const std::string tileText = std::to_string(player.tile) + " " + tile.label + " " + tileKindText(tile.kind);
-        const std::string routeText = clipMenuText(playerRouteText(player), 24);
+        const std::string tileText = "Space " + std::to_string(player.tile) + " - " + getTileDisplayName(tile);
         const std::string typeText = player.type == PlayerType::CPU
             ? "CPU-" + cpuDifficultyLabel(player.cpuDifficulty)
             : "Human";
@@ -866,25 +809,25 @@ void Game::showScoreboardPopup() const {
         mvwprintw(popup,
                   y,
                   2,
-                  "%-5d %-14s %-9s %-11s $%-9d %-10d $%-10d %-24s",
+                  "%-5d %-14s %-9s %-28s $%-9d %-10d $%-10d",
                   static_cast<int>(row + 1),
                   name.c_str(),
                   clipMenuText(typeText, 9).c_str(),
-                  clipMenuText(tileText, 11).c_str(),
+                  clipMenuText(tileText, 28).c_str(),
                   player.cash,
                   player.loans,
-                  calculateFinalWorth(player),
-                  routeText.c_str());
+                  calculateFinalWorth(player));
         if (playerIndex == currentPlayerIndex) {
             wattroff(popup, A_REVERSE);
         }
     }
 
-    mvwprintw(popup, popupH - 4, 2, "Highlighted row is the current turn. Worth estimate includes loans and visible assets.");
-    mvwprintw(popup, popupH - 3, 2, "Current turn: %s on tile %d [%s]",
+    mvwprintw(popup, popupH - 4, 2, "Highlighted row is the current turn. Route: %s",
+              clipMenuText(playerRouteText(players[currentPlayerIndex]), 66).c_str());
+    mvwprintw(popup, popupH - 3, 2, "Current turn: %s on Space %d - %s",
               players[currentPlayerIndex].name.c_str(),
               players[currentPlayerIndex].tile,
-              board.tileAt(players[currentPlayerIndex].tile).label.c_str());
+              getTileDisplayName(board.tileAt(players[currentPlayerIndex].tile)).c_str());
     mvwprintw(popup, popupH - 2, 2, "Press ENTER");
     wrefresh(popup);
     waitForEnter(popup, popupH - 2, 15, "");
@@ -901,8 +844,8 @@ void Game::showTileGuidePopup() const {
     applyWindowBg(popup);
     box(popup, 0, 0);
 
-    drawPopupPulse(popup, 1, 2, "Quick Tutorial: Tile Guide", GOLDRUSH_GOLD_SAND, hasColor);
-    mvwprintw(popup, 2, 2, "Board abbreviations");
+    blinkIndicator(popup, 1, 2, "Quick Tutorial: Tile Guide", hasColor, GOLDRUSH_GOLD_SAND, 2, 0, popupW - 4);
+    mvwprintw(popup, 2, 2, "Board abbreviations show as Full Name (ABBR)");
 
     for (size_t i = 0; i < legend.size(); ++i) {
         const int columnX = i < 10 ? 2 : 41;
@@ -937,13 +880,16 @@ void Game::showCpuThinking(int playerIndex, const std::string& action) const {
     }
 
     const Player& player = players[static_cast<std::size_t>(playerIndex)];
-    werase(msgWin);
-    box(msgWin, 0, 0);
-    mvwprintw(msgWin, 1, 2, "%s [%s CPU]", player.name.c_str(),
-              cpuDifficultyLabel(player.cpuDifficulty).c_str());
-    mvwprintw(msgWin, 2, 2, "%s", action.c_str());
-    wrefresh(msgWin);
-    napms(550);
+    std::vector<std::string> lines;
+    lines.push_back(player.name + " is thinking...");
+    lines.push_back("CPU Difficulty: " + cpuDifficultyLabel(player.cpuDifficulty));
+    lines.push_back(action);
+    lines.push_back("Reason: " + cpuReasonForAction(player, action));
+    showPopupMessage("CPU Decision", lines, hasColor, autoAdvanceUi);
+    if (titleWin) touchwin(titleWin);
+    if (boardWin) touchwin(boardWin);
+    if (infoWin) touchwin(infoWin);
+    if (msgWin) touchwin(msgWin);
 }
 
 int Game::effectiveSalary(const Player& player) const {
@@ -989,6 +935,76 @@ bool Game::resolveSkipTurn(int playerIndex) {
     autoAdvanceUi = previousAutoAdvance;
     decrementTurnStatuses(player);
     return true;
+}
+
+std::string cpuReasonForAction(const Player& player, const std::string& action) {
+    switch (player.cpuDifficulty) {
+        case CpuDifficulty::Easy:
+            return "Easy CPU uses simple, sometimes random choices.";
+        case CpuDifficulty::Hard:
+            if (action.find("Career") != std::string::npos ||
+                action.find("career") != std::string::npos) {
+                return "Hard CPU favors the highest salary or strongest long-term option available.";
+            }
+            if (action.find("Risk") != std::string::npos ||
+                action.find("risky") != std::string::npos) {
+                return "Hard CPU weighs cash, loans, and route upside before choosing.";
+            }
+            if (action.find("sabotage") != std::string::npos ||
+                action.find("Sabotage") != std::string::npos) {
+                return "Hard CPU targets the player with the strongest visible position.";
+            }
+            return "Hard CPU picks the option with the best expected long-term value.";
+        case CpuDifficulty::Normal:
+        default:
+            return "Normal CPU chooses a practical option with a basic money or progress benefit.";
+    }
+}
+
+std::string describeTileEffectText(const Tile& tile) {
+    switch (tile.kind) {
+        case TILE_BLACK:
+            return "Starts a minigame. Payout depends on performance.";
+        case TILE_START:
+            return "The journey begins.";
+        case TILE_SPLIT_START:
+            return "Choose College or Career before moving ahead.";
+        case TILE_COLLEGE:
+            return "College route tuition is paid before the route begins.";
+        case TILE_CAREER:
+            return "Choose a career card and set salary.";
+        case TILE_GRADUATION:
+            return "College players choose a degree career.";
+        case TILE_MARRIAGE:
+            return "Resolve marriage and gift spin.";
+        case TILE_SPLIT_FAMILY:
+            return "Choose Family path or Life path.";
+        case TILE_FAMILY:
+            return "Resolve the Family path choice.";
+        case TILE_NIGHT_SCHOOL:
+            return "Optional career upgrade if Night School is enabled.";
+        case TILE_SPLIT_RISK:
+            return "Choose Safe route or Risky route.";
+        case TILE_SAFE:
+            return "Collect a safe-route payout.";
+        case TILE_RISKY:
+            return "Spin for a high-risk reward or penalty.";
+        case TILE_SPIN_AGAIN:
+            return "Take another movement spin immediately.";
+        case TILE_CAREER_2:
+            return "Promotion increases salary.";
+        case TILE_PAYDAY:
+            return "Receive salary plus this space payout.";
+        case TILE_BABY:
+            return "Family event adds children based on the tile.";
+        case TILE_RETIREMENT:
+            return "Choose retirement destination and final bonus.";
+        case TILE_HOUSE:
+            return "Draw and buy a house.";
+        case TILE_EMPTY:
+        default:
+            return "No special effect.";
+    }
 }
 
 int Game::chooseSabotageTarget(int attackerIndex) {
@@ -1492,28 +1508,76 @@ int Game::maxRewardForTier(int tier) const {
 }
 
 void Game::showInfoPopup(const std::string& line1, const std::string& line2) const {
-    for (int flash = 0; flash < 3; ++flash) {
-        werase(msgWin);
-        box(msgWin, 0, 0);
-        if (flash % 2 == 0) {
-            drawPopupPulse(msgWin, 1, 2, line1, GOLDRUSH_GOLD_SAND, hasColor);
-        } else {
-            mvwprintw(msgWin, 1, 2, "%s", line1.c_str());
-        }
-        mvwprintw(msgWin, 2, 2, "%s", line2.c_str());
-        wrefresh(msgWin);
-        napms(85);
-    }
     werase(msgWin);
     box(msgWin, 0, 0);
-    drawPopupPulse(msgWin, 1, 2, line1, GOLDRUSH_GOLD_SAND, hasColor);
-    mvwprintw(msgWin, 2, 2, "%s", line2.c_str());
+    mvwprintw(msgWin, 2, 2, "%s", clipUiText(line2, MSG_W - 28).c_str());
     wrefresh(msgWin);
+    blinkIndicator(msgWin,
+                   1,
+                   2,
+                   clipUiText(line1, MSG_W - 4),
+                   hasColor,
+                   GOLDRUSH_GOLD_SAND,
+                   2,
+                   2000,
+                   MSG_W - 4);
     if (autoAdvanceUi) {
-        napms(550);
         return;
     }
-    waitForEnter(msgWin, 2, 2, "");
+    waitForEnter(msgWin, 2, MSG_W - 23, "Press ENTER");
+}
+
+void Game::showTurnSummaryPopup(int playerIndex,
+                                int rolledValue,
+                                int movementValue,
+                                int startTile,
+                                int endTile,
+                                int startingCash,
+                                int startingLoans,
+                                const std::string& reason) const {
+    if (playerIndex < 0 || playerIndex >= static_cast<int>(players.size())) {
+        return;
+    }
+
+    const Player& player = players[static_cast<std::size_t>(playerIndex)];
+    const Tile& start = board.tileAt(startTile);
+    const Tile& end = board.tileAt(endTile);
+    std::vector<std::string> lines;
+    lines.push_back(player.name + "'s Turn");
+    lines.push_back("Player Type: " + playerTypeLabel(player.type) +
+                    (player.type == PlayerType::CPU
+                         ? " (" + cpuDifficultyLabel(player.cpuDifficulty) + ")"
+                         : ""));
+    lines.push_back("Start Money: $" + std::to_string(startingCash) +
+                    " | Loans: " + std::to_string(startingLoans));
+    lines.push_back("Start Position: Space " + std::to_string(startTile) +
+                    " - " + getTileDisplayName(start));
+    lines.push_back(reason + ": rolled " + std::to_string(rolledValue) +
+                    (movementValue != rolledValue
+                         ? " | movement after effects " + std::to_string(movementValue)
+                         : ""));
+    lines.push_back(player.name + " moved from Space " + std::to_string(startTile) +
+                    " to Space " + std::to_string(endTile) + ".");
+    lines.push_back("Landed On: " + getTileDisplayName(end));
+    lines.push_back("Effect: " + describeTileEffectText(end));
+    const int cashDelta = player.cash - startingCash;
+    const int loanDelta = player.loans - startingLoans;
+    std::string delta = "Money Change: ";
+    if (cashDelta >= 0) {
+        delta += "+$" + std::to_string(cashDelta);
+    } else {
+        delta += "-$" + std::to_string(-cashDelta);
+    }
+    delta += " | Loan Change: ";
+    delta += loanDelta >= 0 ? "+" + std::to_string(loanDelta) : std::to_string(loanDelta);
+    lines.push_back(delta);
+    lines.push_back("End Money: $" + std::to_string(player.cash) +
+                    " | Loans: " + std::to_string(player.loans));
+    showPopupMessage("End-of-Turn Summary", lines, hasColor, autoAdvanceUi);
+    if (titleWin) touchwin(titleWin);
+    if (boardWin) touchwin(boardWin);
+    if (infoWin) touchwin(infoWin);
+    if (msgWin) touchwin(msgWin);
 }
 
 int Game::rollSpinner(const std::string& title, const std::string& detail) {
@@ -1821,6 +1885,147 @@ void Game::playBlackTileMinigame(int playerIndex) {
     }
 }
 
+int Game::chooseRandomOpponentIndex(int currentPlayer) {
+    std::vector<int> candidates;
+    for (size_t i = 0; i < players.size(); ++i) {
+        if (static_cast<int>(i) != currentPlayer && !players[i].retired) {
+            candidates.push_back(static_cast<int>(i));
+        }
+    }
+    if (candidates.empty()) {
+        return -1;
+    }
+    return candidates[static_cast<std::size_t>(rng.uniformInt(0, static_cast<int>(candidates.size()) - 1))];
+}
+
+int Game::simulateDuelMinigameScore(const Player& player) {
+    if (player.type != PlayerType::CPU) {
+        return rng.uniformInt(40, 85);
+    }
+
+    switch (player.cpuDifficulty) {
+        case CpuDifficulty::Easy:
+            return rng.uniformInt(20, 55);
+        case CpuDifficulty::Hard:
+            return rng.uniformInt(65, 95);
+        case CpuDifficulty::Normal:
+        default:
+            return rng.uniformInt(45, 75);
+    }
+}
+
+int Game::playDuelMinigameScore(int playerIndex, int minigameChoice) {
+    Player& player = players[static_cast<std::size_t>(playerIndex)];
+    static const char* names[] = {
+        "Pong",
+        "Battleship",
+        "Hangman",
+        "Memory Match",
+        "Minesweeper"
+    };
+
+    if (isCpuPlayer(playerIndex)) {
+        const int score = simulateDuelMinigameScore(player);
+        showPopupMessage(player.name + " CPU Minigame Result",
+                         cpuDifficultyLabel(player.cpuDifficulty) + " CPU scored " +
+                         std::to_string(score) + "/100 in " + names[minigameChoice] + ".",
+                         hasColor,
+                         autoAdvanceUi);
+        return score;
+    }
+
+    int score = 0;
+    if (minigameChoice == 0) {
+        const PongMinigameResult result = playPongMinigame(player.name, hasColor);
+        score = result.abandoned ? 0 : std::min(100, result.playerScore * 10);
+    } else if (minigameChoice == 1) {
+        const BattleshipMinigameResult result = playBattleshipMinigame(player.name, hasColor);
+        score = result.abandoned ? 0 : std::min(100, result.shipsDestroyed * 10);
+    } else if (minigameChoice == 2) {
+        const HangmanResult result = playHangmanMinigame(player.name, hasColor);
+        score = result.abandoned ? 0 : std::min(100, result.lettersGuessed * 8);
+    } else if (minigameChoice == 3) {
+        const MemoryMatchResult result = playMemoryMatchMinigame(player.name, hasColor);
+        score = result.abandoned ? 0 : std::min(100, result.pairsMatched * 12 + (result.won ? 4 : 0));
+    } else {
+        const MinesweeperResult result = playMinesweeperMinigame(player.name, hasColor);
+        score = result.abandoned ? 0 : std::min(100, result.safeTilesRevealed * 6);
+    }
+
+    if (titleWin) touchwin(titleWin);
+    if (boardWin) touchwin(boardWin);
+    if (infoWin) touchwin(infoWin);
+    if (msgWin) touchwin(msgWin);
+
+    showInfoPopup(player.name + " duel score",
+                  std::string(names[minigameChoice]) + " score: " + std::to_string(score) + "/100.");
+    return score;
+}
+
+std::string Game::resolveDuelMinigameAction(int playerIndex, int& amountDelta) {
+    Player& player = players[static_cast<std::size_t>(playerIndex)];
+    const int opponentIndex = chooseRandomOpponentIndex(playerIndex);
+    if (opponentIndex < 0) {
+        amountDelta = 0;
+        return "No valid opponent is available.";
+    }
+
+    Player& opponent = players[static_cast<std::size_t>(opponentIndex)];
+    const int minigameChoice = rng.uniformInt(0, 4);
+    static const char* names[] = {
+        "Pong",
+        "Battleship",
+        "Hangman",
+        "Memory Match",
+        "Minesweeper"
+    };
+
+    std::vector<std::string> lines;
+    lines.push_back(player.name + " used a Duel Minigame Card!");
+    lines.push_back("Random opponent draw begins...");
+    lines.push_back("Opponent selected: " + opponent.name);
+    lines.push_back(player.name + " will play against " + opponent.name + ".");
+    if (opponent.type == PlayerType::CPU) {
+        lines.push_back("Opponent CPU difficulty: " + cpuDifficultyLabel(opponent.cpuDifficulty));
+    } else {
+        lines.push_back("Opponent is human and will play normally.");
+    }
+    lines.push_back("Minigame selected: " + std::string(names[minigameChoice]));
+    showPopupMessage("Duel Minigame Card", lines, hasColor, autoAdvanceUi);
+
+    const int playerScore = playDuelMinigameScore(playerIndex, minigameChoice);
+    const int opponentScore = playDuelMinigameScore(opponentIndex, minigameChoice);
+    const int pot = 30000;
+
+    std::ostringstream result;
+    result << names[minigameChoice] << " duel score "
+           << player.name << " " << playerScore
+           << " - " << opponent.name << " " << opponentScore << ". ";
+
+    if (playerScore >= opponentScore) {
+        PaymentResult payment = bank.charge(opponent, pot);
+        bank.credit(player, pot);
+        amountDelta = pot;
+        result << player.name << " wins $" << pot << ".";
+        if (payment.loansTaken > 0) {
+            result << " " << opponent.name << " auto-loans: " << payment.loansTaken << ".";
+        }
+    } else {
+        PaymentResult payment = bank.charge(player, pot);
+        bank.credit(opponent, pot);
+        amountDelta = -pot;
+        result << opponent.name << " wins $" << pot << ".";
+        if (payment.loansTaken > 0) {
+            result << " Auto-loans: " << payment.loansTaken << ".";
+        }
+    }
+
+    addHistory(player.name + " dueled " + opponent.name + " in " + names[minigameChoice]);
+    addHistory(result.str());
+    showPopupMessage("Duel Result", result.str(), hasColor, autoAdvanceUi);
+    return result.str();
+}
+
 int Game::findPreviousTile(const Player& player, int tileId) const {
     std::vector<int> candidates;
     for (int i = 0; i < TILE_COUNT; ++i) {
@@ -1952,6 +2157,8 @@ std::string Game::applyActionEffect(int playerIndex,
             return "No payout because you are not married yet.";
         case ACTION_MOVE_SPACES:
             return movePlayerByAction(playerIndex, effect.amount);
+        case ACTION_DUEL_MINIGAME:
+            return resolveDuelMinigameAction(playerIndex, amountDelta);
         default:
             return "No effect.";
     }
@@ -2016,9 +2223,9 @@ int Game::playActionCard(int playerIndex, const Tile& tile) {
         mvwprintw(popup, 6, 2, "Branch: %s", branchText.c_str());
     }
     if (amount > 0) {
-        drawPopupPulse(popup, 7, 2, "Result: " + result, GOLDRUSH_BLACK_FOREST, hasColor);
+        blinkIndicator(popup, 7, 2, "Result: " + result, hasColor, GOLDRUSH_BLACK_FOREST, 2, 2000, 60);
     } else if (amount < 0) {
-        drawPopupPulse(popup, 7, 2, "Result: " + result, GOLDRUSH_GOLD_TERRA, hasColor);
+        blinkIndicator(popup, 7, 2, "Result: " + result, hasColor, GOLDRUSH_GOLD_TERRA, 2, 2000, 60);
     } else {
         mvwprintw(popup, 7, 2, "Result: %s", result.c_str());
     }
@@ -2213,7 +2420,7 @@ void Game::resolveRetirement(int playerIndex) {
     }
 
     player.retired = true;
-    player.retirementHome = choice == 0 ? "MM" : "CA";
+    player.retirementHome = choice == 0 ? "Millionaire Mansion (MM)" : "Countryside Acres (CA)";
     player.tile = choice == 0 ? 87 : 88;
     ++retiredCount;
     player.retirementPlace = retiredCount;
@@ -2259,7 +2466,7 @@ void Game::assignInvestment(Player& player) {
 
     player.investedNumber = card.number;
     player.investPayout = card.payout;
-    addHistory(player.name + " invested on " + std::to_string(card.number));
+    addHistory(player.name + " invested on spinner " + std::to_string(card.number));
 }
 
 void Game::resolveInvestmentPayouts(int spinnerValue) {
@@ -2426,7 +2633,7 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
             break;
     }
 
-    showInfoPopup(tile.label + " resolved", line);
+    showInfoPopup(getTileDisplayName(tile) + " resolved", line);
 }
 
 int Game::chooseNextTile(Player& player, const Tile& tile) {
@@ -2452,10 +2659,18 @@ int Game::chooseNextTile(Player& player, const Tile& tile) {
             PaymentResult payment = bank.charge(player, 100000);
             player.collegeGraduate = false;
             addHistory(appendLoanText(player.name + " chose College and paid $100000", payment));
-            showInfoPopup("College route",
-                          appendLoanText("Tuition paid before moving onto CO.", payment));
+            showDecisionPopup(player.name,
+                              "College Route",
+                              appendLoanText("This path may lead to stronger careers later. Tuition is paid before moving onto College Route (CO).", payment),
+                              hasColor,
+                              autoAdvanceUi);
         } else {
             addHistory(player.name + " chose Career");
+            showDecisionPopup(player.name,
+                              "Career Path",
+                              "This path chooses a job immediately and starts earning salary sooner.",
+                              hasColor,
+                              autoAdvanceUi);
         }
     }
 
@@ -2489,9 +2704,9 @@ bool Game::animateMove(int currentPlayer, int steps) {
         player.tile = nextTile;
 
         const Tile& landed = board.tileAt(player.tile);
-        std::string message = player.name + " moved to " + landed.label;
+        std::string message = player.name + " moved to " + getTileDisplayName(landed);
         if (board.isStopSpace(landed)) {
-            message = "STOP! " + player.name + " hit " + landed.label;
+            message = "STOP! " + player.name + " hit " + getTileDisplayName(landed);
         }
         renderGame(currentPlayer, message, "Movement in progress...");
         napms(170);
@@ -2508,13 +2723,25 @@ bool Game::animateMove(int currentPlayer, int steps) {
 
 void Game::takeMovementSpin(int currentPlayer, const std::string& reason) {
     Player& player = players[currentPlayer];
+    const int startTile = player.tile;
+    const int startingCash = player.cash;
+    const int startingLoans = player.loans;
+    const Tile& start = board.tileAt(startTile);
+    std::string typeLine = playerTypeLabel(player.type);
+    if (player.type == PlayerType::CPU) {
+        typeLine += " " + cpuDifficultyLabel(player.cpuDifficulty);
+    }
+    showInfoPopup(player.name + "'s Turn - " + typeLine,
+                  "Money $" + std::to_string(player.cash) + " | Space " +
+                  std::to_string(startTile) + " - " + getTileDisplayName(start));
+
     int roll = rollSpinner(reason, "Hold SPACE to spin movement");
+    const int originalRoll = roll;
     addHistory(player.name + " spun " + std::to_string(roll));
     maybeAwardSpinToWin(player, roll);
     resolveInvestmentPayouts(roll);
 
     if (player.movementPenaltyTurns > 0 && player.movementPenaltyPercent > 0) {
-        const int originalRoll = roll;
         if (player.movementPenaltyPercent >= 100) {
             roll = 0;
         } else {
@@ -2529,6 +2756,14 @@ void Game::takeMovementSpin(int currentPlayer, const std::string& reason) {
     if (roll <= 0) {
         addHistory(player.name + " could not move because of sabotage");
         showInfoPopup("Traffic Jam", "Movement cancelled. No tile effect is resolved.");
+        showTurnSummaryPopup(currentPlayer,
+                             originalRoll,
+                             roll,
+                             startTile,
+                             player.tile,
+                             startingCash,
+                             startingLoans,
+                             reason);
         return;
     }
 
@@ -2536,6 +2771,14 @@ void Game::takeMovementSpin(int currentPlayer, const std::string& reason) {
     if (!stoppedEarly) {
         applyTileEffect(currentPlayer, board.tileAt(player.tile));
     }
+    showTurnSummaryPopup(currentPlayer,
+                         originalRoll,
+                         roll,
+                         startTile,
+                         player.tile,
+                         startingCash,
+                         startingLoans,
+                         reason);
 }
 
 bool Game::allPlayersRetired() const {

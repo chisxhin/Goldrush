@@ -7,7 +7,9 @@
 #include <string>
 #include <vector>
 
+#include "minigame_tutorials.h"
 #include "ui.h"
+#include "ui_helpers.h"
 
 namespace {
 const std::vector<std::string> BATTLESHIP_TITLE = {
@@ -98,7 +100,7 @@ void drawFeedbackBanner(WINDOW* win,
     }
 
     const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
-    const int attrs = A_BOLD | A_BLINK;
+    const int attrs = A_BOLD;
     if (hasColor) {
         wattron(win, COLOR_PAIR(colorPair) | attrs);
     } else {
@@ -122,6 +124,13 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
     result.shipsDestroyed = 0;
     result.clearedWave = false;
     result.abandoned = false;
+
+    showMinigameTutorial("Battleship",
+                         "Destroy the money ships while dodging enemy fire.",
+                         "A/D moves, Space shoots, X starts, Q exits.",
+                         "Clear the wave or survive until the run ends.",
+                         "Each ship destroyed pays $100. One enemy hit ends the run.",
+                         hasColor);
 
     int screenH = 0;
     int screenW = 0;
@@ -363,8 +372,17 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
                     playerShots[shotIndex].y = arenaTop - 1;
                     ++result.shipsDestroyed;
                     feedbackText = "DIRECT HIT! +$100";
-                    feedbackFrames = 28;
                     feedbackPositive = true;
+                    blinkIndicator(overlay,
+                                   arenaTop + 2,
+                                   arenaLeft + (arenaWidth - static_cast<int>(feedbackText.size())) / 2,
+                                   feedbackText,
+                                   hasColor,
+                                   GOLDRUSH_BLACK_FOREST,
+                                   2,
+                                   2000,
+                                   static_cast<int>(feedbackText.size()));
+                    feedbackFrames = 0;
                     break;
                 }
             }
@@ -376,8 +394,17 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
                 enemyShots[i].x <= playerX + 2) {
                 gameOver = true;
                 feedbackText = "HIT TAKEN! RUN ENDS";
-                feedbackFrames = 9999;
                 feedbackPositive = false;
+                blinkIndicator(overlay,
+                               arenaTop + 2,
+                               arenaLeft + (arenaWidth - static_cast<int>(feedbackText.size())) / 2,
+                               feedbackText,
+                               hasColor,
+                               GOLDRUSH_GOLD_TERRA,
+                               2,
+                               2000,
+                               static_cast<int>(feedbackText.size()));
+                feedbackFrames = 0;
                 break;
             }
         }
@@ -397,8 +424,17 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
             result.clearedWave = true;
             gameOver = true;
             feedbackText = "WAVE CLEARED!";
-            feedbackFrames = 9999;
             feedbackPositive = true;
+            blinkIndicator(overlay,
+                           arenaTop + 2,
+                           arenaLeft + (arenaWidth - static_cast<int>(feedbackText.size())) / 2,
+                           feedbackText,
+                           hasColor,
+                           GOLDRUSH_BLACK_FOREST,
+                           2,
+                           2000,
+                           static_cast<int>(feedbackText.size()));
+            feedbackFrames = 0;
         }
 
         napms(20);

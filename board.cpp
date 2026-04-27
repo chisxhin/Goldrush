@@ -1,4 +1,5 @@
 #include "board.hpp"
+#include "tile_display.h"
 
 namespace {
 struct UiPos {
@@ -220,25 +221,25 @@ bool Board::isStopSpace(const Tile& tile) const {
 
 std::vector<std::string> Board::tutorialLegend() const {
     std::vector<std::string> lines;
-    lines.push_back("ST = Start");
-    lines.push_back("SP = Branch point");
-    lines.push_back("CO = College path");
-    lines.push_back("CR = Choose a career");
-    lines.push_back("GR = Graduation STOP");
-    lines.push_back("GM = Get Married STOP");
-    lines.push_back("FM = Family STOP");
-    lines.push_back("NS = Night School");
-    lines.push_back("PD = Payday");
-    lines.push_back("PR = Promotion");
-    lines.push_back("HS = House");
-    lines.push_back("3B/2B/1B = Baby STOP spaces");
-    lines.push_back("RS = Risk split");
-    lines.push_back("SF = Safe route");
-    lines.push_back("RK = Risky route");
-    lines.push_back("SG = Spin again");
-    lines.push_back("MM = Millionaire Mansion");
-    lines.push_back("CA = Countryside Acres");
-    lines.push_back("BK = Action / black card");
+    lines.push_back(getTileDisplayName(TILE_START));
+    lines.push_back(getTileDisplayName(TILE_SPLIT_START));
+    lines.push_back(getTileDisplayName(TILE_COLLEGE));
+    lines.push_back(getTileDisplayName(TILE_CAREER));
+    lines.push_back(getTileDisplayName(TILE_GRADUATION));
+    lines.push_back(getTileDisplayName(TILE_MARRIAGE));
+    lines.push_back(getTileDisplayName(TILE_SPLIT_FAMILY));
+    lines.push_back(getTileDisplayName(TILE_NIGHT_SCHOOL));
+    lines.push_back(getTileDisplayName(TILE_PAYDAY));
+    lines.push_back(getTileDisplayName(TILE_CAREER_2));
+    lines.push_back(getTileDisplayName(TILE_HOUSE));
+    lines.push_back("Baby Event (3B/2B/1B)");
+    lines.push_back(getTileDisplayName(TILE_SPLIT_RISK));
+    lines.push_back(getTileDisplayName(TILE_SAFE));
+    lines.push_back(getTileDisplayName(TILE_RISKY));
+    lines.push_back(getTileDisplayName(TILE_SPIN_AGAIN));
+    lines.push_back("Millionaire Mansion (MM)");
+    lines.push_back("Countryside Acres (CA)");
+    lines.push_back(getTileDisplayName(TILE_BLACK));
     return lines;
 }
 

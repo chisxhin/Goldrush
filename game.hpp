@@ -113,11 +113,23 @@ private:
     void renderHeader() const;
     int rollSpinner(const std::string& title, const std::string& detail);
     void showInfoPopup(const std::string& line1, const std::string& line2) const;
+    void showTurnSummaryPopup(int playerIndex,
+                              int rolledValue,
+                              int movementValue,
+                              int startTile,
+                              int endTile,
+                              int startingCash,
+                              int startingLoans,
+                              const std::string& reason) const;
     int showBranchPopup(const std::string& title,
                         const std::vector<std::string>& lines,
                         char a,
                         char b);
     void playBlackTileMinigame(int playerIndex);
+    int chooseRandomOpponentIndex(int currentPlayer);
+    int simulateDuelMinigameScore(const Player& player);
+    int playDuelMinigameScore(int playerIndex, int minigameChoice);
+    std::string resolveDuelMinigameAction(int playerIndex, int& amountDelta);
     int playActionCard(int playerIndex, const Tile& tile);
     void applyTileEffect(int playerIndex, const Tile& tile);
     int findPreviousTile(const Player& player, int tileId) const;
