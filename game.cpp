@@ -140,7 +140,7 @@ Game::Game()
       decks(rules, rng),
       bank(rules),
       sabotage(bank, rng),
-      history(6),
+      history(8),
       titleWin(nullptr),
       boardWin(nullptr),
       infoWin(nullptr),
@@ -164,7 +164,7 @@ Game::Game(std::uint32_t seed)
       decks(rules, rng),
       bank(rules),
       sabotage(bank, rng),
-      history(6),
+      history(8),
       titleWin(nullptr),
       boardWin(nullptr),
       infoWin(nullptr),
@@ -195,10 +195,12 @@ void Game::addHistory(const std::string& entry) {
 
 bool Game::ensureMinSize() const {
     int h, w;
+    const int minHeight = minimumGameHeight();
+    const int minWidth = minimumGameWidth();
     timeout(200);
     while (true) {
         getmaxyx(stdscr, h, w);
-        if (h >= MIN_H && w >= MIN_W) {
+        if (h >= minHeight && w >= minWidth) {
             timeout(-1);
             return true;
         }
@@ -208,18 +210,24 @@ bool Game::ensureMinSize() const {
         }
         clear();
         const char* line1 = "Terminal too small - please resize";
-        const char* line2 = "Minimum size: 122x40";
-        const char* line3 = "Press ESC to quit";
+        std::ostringstream line2;
+        line2 << "Minimum size: " << minWidth << "x" << minHeight;
+        std::ostringstream line3;
+        line3 << "Current size: " << w << "x" << h;
+        const char* line4 = "Press ESC to quit";
         int x1 = (w - static_cast<int>(std::strlen(line1))) / 2;
-        int x2 = (w - static_cast<int>(std::strlen(line2))) / 2;
-        int x3 = (w - static_cast<int>(std::strlen(line3))) / 2;
+        int x2 = (w - static_cast<int>(line2.str().size())) / 2;
+        int x3 = (w - static_cast<int>(line3.str().size())) / 2;
+        int x4 = (w - static_cast<int>(std::strlen(line4))) / 2;
         int y = h / 2;
         if (x1 < 0) x1 = 0;
         if (x2 < 0) x2 = 0;
         if (x3 < 0) x3 = 0;
+        if (x4 < 0) x4 = 0;
         mvprintw(y - 1, x1, "%s", line1);
-        mvprintw(y, x2, "%s", line2);
-        mvprintw(y + 1, x3, "%s", line3);
+        mvprintw(y, x2, "%s", line2.str().c_str());
+        mvprintw(y + 1, x3, "%s", line3.str().c_str());
+        mvprintw(y + 2, x4, "%s", line4);
         refresh();
 
         int ch = getch();
@@ -240,20 +248,27 @@ void Game::destroyWindows() {
 void Game::createWindows() {
     int termH, termW;
     getmaxyx(stdscr, termH, termW);
-    const int titleHeight = TITLE_H;
-    int totalH = titleHeight + BOARD_H + MSG_H;
-    int startY = (termH - totalH) / 2;
-    int startX = (termW - TITLE_W) / 2;
-    if (startY < 0) startY = 0;
-    if (startX < 0) startX = 0;
+    const UILayout layout = calculateUILayout(termH, termW);
 
     clear();
     refresh();
 
-    titleWin = newwin(TITLE_H, TITLE_W, startY, startX);
-    boardWin = newwin(BOARD_H, BOARD_W, startY + titleHeight, startX);
-    infoWin = newwin(INFO_H, INFO_W, startY + titleHeight, startX + BOARD_W);
-    msgWin = newwin(MSG_H, MSG_W, startY + titleHeight + BOARD_H, startX);
+    titleWin = newwin(layout.headerHeight,
+                      layout.totalWidth,
+                      layout.originY,
+                      layout.originX);
+    boardWin = newwin(layout.boardHeight,
+                      layout.boardWidth,
+                      layout.originY + layout.headerHeight,
+                      layout.originX);
+    infoWin = newwin(layout.sidePanelHeight,
+                     layout.sidePanelWidth,
+                     layout.originY + layout.headerHeight,
+                     layout.originX + layout.boardWidth);
+    msgWin = newwin(layout.messageHeight,
+                    layout.totalWidth,
+                    layout.originY + layout.headerHeight + layout.boardHeight,
+                    layout.originX);
 
     keypad(infoWin, TRUE);
     keypad(msgWin, TRUE);
@@ -1680,8 +1695,8 @@ void Game::renderHeader() const {
 
 void Game::renderGame(int currentPlayer, const std::string& msg, const std::string& detail) const {
     renderHeader();
-    draw_board_ui(boardWin, board, players, players[currentPlayer].tile);
-    draw_sidebar_ui(infoWin, players, currentPlayer, history.recent(), rules);
+    draw_board_ui(boardWin, board, players, players[currentPlayer].tile, currentPlayer);
+    draw_sidebar_ui(infoWin, board, players, currentPlayer, history.recent(), rules);
     draw_message_ui(msgWin, msg, detail);
 }
 
@@ -1698,23 +1713,28 @@ int Game::maxRewardForTier(int tier) const {
 }
 
 void Game::showInfoPopup(const std::string& line1, const std::string& line2) const {
-    werase(msgWin);
-    box(msgWin, 0, 0);
-    mvwprintw(msgWin, 2, 2, "%s", clipUiText(line2, MSG_W - 28).c_str());
-    wrefresh(msgWin);
+    int msgHeight = 0;
+    int msgWidth = 0;
+    getmaxyx(msgWin, msgHeight, msgWidth);
+    drawEventMessage(msgWin,
+                     clipUiText(line1, static_cast<std::size_t>(std::max(8, msgWidth - 12))),
+                     clipUiText(line2, static_cast<std::size_t>(std::max(8, msgWidth - 4))));
     blinkIndicator(msgWin,
                    1,
-                   2,
-                   clipUiText(line1, MSG_W - 4),
+                   8,
+                   clipUiText(line1, static_cast<std::size_t>(std::max(8, msgWidth - 12))),
                    hasColor,
                    GOLDRUSH_GOLD_SAND,
                    2,
                    2000,
-                   MSG_W - 4);
+                   std::max(8, msgWidth - 12));
     if (autoAdvanceUi) {
         return;
     }
-    waitForEnter(msgWin, 2, MSG_W - 23, "Press ENTER");
+    waitForEnterPrompt(msgWin,
+                       std::max(1, msgHeight - 2),
+                       2,
+                       "Press ENTER to continue...");
 }
 
 void Game::showTurnSummaryPopup(int playerIndex,

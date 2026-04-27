@@ -36,16 +36,16 @@ private:
         START_QUIT_GAME
     };
 
-    static const int MIN_W = 122;
-    static const int MIN_H = 40;
-    static const int TITLE_W = 122;
-    static const int TITLE_H = 8;
+    static const int MIN_W = 116;
+    static const int MIN_H = 38;
+    static const int TITLE_W = 116;
+    static const int TITLE_H = 4;
     static const int BOARD_W = 82;
-    static const int BOARD_H = 28;
-    static const int INFO_W = 40;
-    static const int INFO_H = 28;
-    static const int MSG_W = 122;
-    static const int MSG_H = 4;
+    static const int BOARD_H = 29;
+    static const int INFO_W = 34;
+    static const int INFO_H = 29;
+    static const int MSG_W = 116;
+    static const int MSG_H = 5;
 
     Board board;
     std::vector<Player> players;

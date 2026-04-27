@@ -275,6 +275,89 @@ void debugMathMinigameStub() {
     }
     std::cout << "Math stub score: " << correct << "/3\n";
 }
+
+std::vector<Player> makeBoardPreviewPlayers() {
+    std::vector<Player> players;
+    players.push_back(makeDebugPlayer("Alex", 0));
+    players.push_back(makeDebugPlayer("CPU Bronze", 1));
+    players.push_back(makeDebugPlayer("CPU Gold", 2));
+    players.push_back(makeDebugPlayer("Jamie", 3));
+
+    players[0].tile = 20;
+    players[0].cash = 92000;
+    players[0].job = "Architect";
+    players[0].houseName = "Starter Loft";
+    players[0].hasHouse = true;
+    players[0].actionCards.push_back("Bonus Payday");
+
+    players[1].type = PlayerType::CPU;
+    players[1].cpuDifficulty = CpuDifficulty::Easy;
+    players[1].tile = 44;
+    players[1].cash = 38000;
+    players[1].loans = 2;
+    players[1].job = "Chef";
+
+    players[2].type = PlayerType::CPU;
+    players[2].cpuDifficulty = CpuDifficulty::Hard;
+    players[2].tile = 68;
+    players[2].cash = 174000;
+    players[2].job = "Engineer";
+    players[2].investedNumber = 7;
+    players[2].investPayout = 45000;
+
+    players[3].tile = 83;
+    players[3].cash = 61000;
+    players[3].job = "Teacher";
+    players[3].married = false;
+    players[3].kids = 0;
+
+    return players;
+}
+
+void showBoardPreview(const std::string& eventTitle,
+                      const std::string& eventMessage,
+                      const std::vector<Player>& previewPlayers,
+                      int currentPlayerIndex,
+                      const std::vector<std::string>& historyLines,
+                      const RuleSet& rules) {
+    if (previewPlayers.empty()) {
+        return;
+    }
+
+    initialize_game_ui();
+    const UILayout layout = calculateUILayout();
+    Board board;
+
+    WINDOW* titleWin = newwin(layout.headerHeight, layout.totalWidth, layout.originY, layout.originX);
+    WINDOW* boardWin = newwin(layout.boardHeight, layout.boardWidth, layout.originY + layout.headerHeight, layout.originX);
+    WINDOW* infoWin = newwin(layout.sidePanelHeight,
+                             layout.sidePanelWidth,
+                             layout.originY + layout.headerHeight,
+                             layout.originX + layout.boardWidth);
+    WINDOW* msgWin = newwin(layout.messageHeight,
+                            layout.totalWidth,
+                            layout.originY + layout.headerHeight + layout.boardHeight,
+                            layout.originX);
+
+    apply_ui_background(titleWin);
+    apply_ui_background(boardWin);
+    apply_ui_background(infoWin);
+    apply_ui_background(msgWin);
+    keypad(msgWin, TRUE);
+
+    const int safeCurrent = std::max(0, std::min(currentPlayerIndex, static_cast<int>(previewPlayers.size()) - 1));
+    draw_title_banner_ui(titleWin);
+    draw_board_ui(boardWin, board, previewPlayers, previewPlayers[static_cast<std::size_t>(safeCurrent)].tile, safeCurrent);
+    draw_sidebar_ui(infoWin, board, previewPlayers, safeCurrent, historyLines, rules);
+    drawEventMessage(msgWin, eventTitle, eventMessage);
+    waitForEnterPrompt(msgWin, layout.messageHeight - 2, 2, "Press ENTER to continue...");
+
+    delwin(msgWin);
+    delwin(infoWin);
+    delwin(boardWin);
+    delwin(titleWin);
+    destroy_game_ui();
+}
 }
 
 void debugDiceRoll() {
@@ -726,6 +809,214 @@ void debugUiPacing() {
     }
 }
 
+void debugTileColorsAndSymbols() {
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    players[0].tile = 10;
+    players[1].tile = 31;
+    players[2].tile = 55;
+    players[3].tile = 86;
+    showBoardPreview("Tile Colors and Symbols",
+                     "Preview the board surface: quiet basic spaces, brighter specials, and stronger money/risk landmarks.",
+                     players,
+                     0,
+                     std::vector<std::string>{
+                         "Alex spun 6 and collected salary.",
+                         "CPU Gold investment matched 7.",
+                         "Jamie used an action card."
+                     },
+                     rules);
+}
+
+void debugTileFullNameDisplay() {
+    std::cout << "\n===== TILE FULL-NAME DISPLAY DEBUG =====\n";
+    Board board;
+    for (int tileId = 0; tileId < TILE_COUNT; tileId += 7) {
+        const Tile& tile = board.tileAt(tileId);
+        std::cout << "Space " << tileId
+                  << " | symbol [" << getTileBoardSymbol(tile) << "]"
+                  << " | " << getTileDisplayName(tile)
+                  << "\n";
+    }
+    pauseForEnter();
+}
+
+void debugPlayerTokenHighlighting() {
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    players[0].tile = 44;
+    players[1].tile = 44;
+    players[2].tile = 44;
+    players[3].tile = 68;
+    showBoardPreview("Player Token Highlight",
+                     "Three players stack on one tile to test [3P], while the current player stays strongly highlighted.",
+                     players,
+                     2,
+                     std::vector<std::string>{
+                         "CPU Gold moved onto Marriage Stop.",
+                         "Alex joined the same tile.",
+                         "CPU Bronze stacked there too."
+                     },
+                     rules);
+}
+
+void debugBoardLegend() {
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    showBoardPreview("Board Legend",
+                     "Check that the legend uses the same symbols and colors as the board tiles.",
+                     players,
+                     0,
+                     std::vector<std::string>{
+                         "Legend should explain payday, action, career, and risk."
+                     },
+                     rules);
+}
+
+void debugBoardRegions() {
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    players[0].tile = 12;
+    players[1].tile = 38;
+    players[2].tile = 58;
+    players[3].tile = 83;
+    showBoardPreview("Board Regions",
+                     "Scan the board for Startup Street, Career City, Goldrush Valley, Family Avenue, Risky Road, and Retirement Ridge.",
+                     players,
+                     1,
+                     std::vector<std::string>{
+                         "CPU Bronze reached Career City.",
+                         "CPU Gold entered Family Avenue.",
+                         "Jamie approached Risky Road."
+                     },
+                     rules);
+}
+
+void debugBoardLandmarks() {
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    showBoardPreview("Board Landmarks",
+                     "Look for BANK, UNI, LUCK HALL, and the retirement landmark without them covering tiles or player tokens.",
+                     players,
+                     3,
+                     std::vector<std::string>{
+                         "Decorative landmarks should stay outside the route."
+                     },
+                     rules);
+}
+
+void debugPlayerSidePanel() {
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    players[0].loans = 5;
+    players[0].insuranceUses = 1;
+    players[0].shieldCards = 2;
+    players[0].sabotageCooldown = 1;
+    showBoardPreview("Player Side Panel",
+                     "Verify the roster, grouped STATUS/LIFE/DEFENSE sections, and current-player highlighting.",
+                     players,
+                     0,
+                     std::vector<std::string>{
+                         "Alex picked up insurance.",
+                         "CPU Bronze took a loan.",
+                         "CPU Gold banked a big payday."
+                     },
+                     rules);
+}
+
+void debugHistoryFormatting() {
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    showBoardPreview("History Formatting",
+                     "History should show colored category tags like [MOVE], [CARD], [MINIGAME], and [MONEY].",
+                     players,
+                     1,
+                     std::vector<std::string>{
+                         "CPU Bronze moved 4 spaces.",
+                         "Alex used a Forced Duel card.",
+                         "CPU Gold earned salary $45000."
+                     },
+                     rules);
+}
+
+void debugCurrentObjectiveBox() {
+    RuleSet rules = makeNormalRules();
+    rules.toggles.investmentEnabled = true;
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    players[0].loans = 5;
+    players[0].cash = 25000;
+    players[0].tile = 78;
+    players[0].actionCards.push_back("Shield Card");
+    showBoardPreview("Current Objective Box",
+                     "The hint box should warn about debt, low cash, action cards, or a nearby payday depending on the active player state.",
+                     players,
+                     0,
+                     std::vector<std::string>{
+                         "Alex is carrying heavy debt.",
+                         "A payday is close ahead."
+                     },
+                     rules);
+}
+
+void debugEventMessagePanel() {
+    initialize_game_ui();
+    const UILayout layout = calculateUILayout();
+    WINDOW* msgWin = newwin(layout.messageHeight,
+                            layout.totalWidth,
+                            layout.originY + layout.headerHeight + layout.boardHeight,
+                            layout.originX);
+    apply_ui_background(msgWin);
+    keypad(msgWin, TRUE);
+    drawEventMessage(msgWin,
+                     "Hangman Sidegame",
+                     "Alex exited early. No payout awarded. This preview checks the more polished bottom event panel.");
+    waitForEnterPrompt(msgWin, layout.messageHeight - 2, 2, "Press ENTER to continue...");
+    delwin(msgWin);
+    destroy_game_ui();
+}
+
+void debugBoardUi() {
+    while (true) {
+        std::cout << "\n===== BOARD UI DEBUG MENU =====\n"
+                  << "1. Test tile colors and symbols\n"
+                  << "2. Test tile full-name display\n"
+                  << "3. Test player token highlighting\n"
+                  << "4. Test board legend\n"
+                  << "5. Test board regions\n"
+                  << "6. Test landmarks\n"
+                  << "7. Test player side panel\n"
+                  << "8. Test history formatting\n"
+                  << "9. Test current objective box\n"
+                  << "10. Test event message panel\n"
+                  << "11. Return\n";
+
+        const int choice = readMenuChoice(1, 11);
+        if (choice == 1) {
+            debugTileColorsAndSymbols();
+        } else if (choice == 2) {
+            debugTileFullNameDisplay();
+        } else if (choice == 3) {
+            debugPlayerTokenHighlighting();
+        } else if (choice == 4) {
+            debugBoardLegend();
+        } else if (choice == 5) {
+            debugBoardRegions();
+        } else if (choice == 6) {
+            debugBoardLandmarks();
+        } else if (choice == 7) {
+            debugPlayerSidePanel();
+        } else if (choice == 8) {
+            debugHistoryFormatting();
+        } else if (choice == 9) {
+            debugCurrentObjectiveBox();
+        } else if (choice == 10) {
+            debugEventMessagePanel();
+        } else {
+            return;
+        }
+    }
+}
+
 void debugSabotage() {
     while (true) {
         std::cout << "\n===== SABOTAGE DEBUG MENU =====\n"
@@ -834,9 +1125,10 @@ void runDebugMenu() {
                   << "7. Test minigames\n"
                   << "8. Test sabotage features\n"
                   << "9. Test UI / pacing features\n"
-                  << "10. Exit\n";
+                  << "10. Test board UI features\n"
+                  << "11. Exit\n";
 
-        const int choice = readMenuChoice(1, 10);
+        const int choice = readMenuChoice(1, 11);
         switch (choice) {
             case 1:
                 debugDiceRoll();
@@ -866,6 +1158,9 @@ void runDebugMenu() {
                 debugUiPacing();
                 break;
             case 10:
+                debugBoardUi();
+                break;
+            case 11:
                 std::cout << "Exiting debug menu.\n";
                 return;
             default:

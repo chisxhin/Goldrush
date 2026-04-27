@@ -7,6 +7,7 @@
 #include "board.hpp"
 #include "player.hpp"
 #include "rules.hpp"
+#include "ui_layout.h"
 
 enum GoldrushUiColorPair {
     GOLDRUSH_GOLD_BLACK = 1,
@@ -23,7 +24,15 @@ enum GoldrushUiColorPair {
     GOLDRUSH_PLAYER_FOUR = 12,
     GOLDRUSH_BLACK_FOREST = 13,
     GOLDRUSH_BLACK_CREAM = 14,
-    GOLDRUSH_GOLD_TERRA = 15
+    GOLDRUSH_GOLD_TERRA = 15,
+    GOLDRUSH_TILE_BASIC = 16,
+    GOLDRUSH_TILE_PAYDAY = 17,
+    GOLDRUSH_TILE_ACTION = 18,
+    GOLDRUSH_TILE_MINIGAME = 19,
+    GOLDRUSH_TILE_RISK = 20,
+    GOLDRUSH_TILE_CAREER = 21,
+    GOLDRUSH_TILE_HOME = 22,
+    GOLDRUSH_TILE_ROUTE = 23
 };
 
 struct GoldrushUiPosition {
@@ -31,11 +40,24 @@ struct GoldrushUiPosition {
     int y;
 };
 
+void initGameColors();
 void initialize_game_ui();
 void destroy_game_ui();
 void apply_ui_background(WINDOW* window);
-void draw_board_ui(WINDOW* boardWin, const Board& board, const std::vector<Player>& players, int highlightedTile);
+int getTileColorPair(const Tile& tile);
+void drawBoardLegend(WINDOW* win);
+void drawCurrentHintBox(WINDOW* win, const Board& board, const Player& player, const RuleSet& rules);
+void drawPlayerPanel(WINDOW* sideWin, const Board& board, const std::vector<Player>& players, int currentPlayerIndex);
+std::string formatHistoryEvent(const std::string& eventText);
+int getHistoryEventColor(const std::string& eventText);
+void drawEventMessage(WINDOW* messageWin, const std::string& title, const std::string& message);
+void draw_board_ui(WINDOW* boardWin,
+                   const Board& board,
+                   const std::vector<Player>& players,
+                   int highlightedTile,
+                   int currentPlayerIndex);
 void draw_sidebar_ui(WINDOW* panelWin,
+                     const Board& board,
                      const std::vector<Player>& players,
                      int currentPlayer,
                      const std::vector<std::string>& historyLines,
