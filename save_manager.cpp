@@ -20,6 +20,7 @@ namespace {
 struct LoadedGameState {
     RuleSet rules;
     GameSettings settings;
+    BoardViewMode boardViewMode;
     std::vector<Player> players;
     std::vector<std::string> historyEntries;
     SerializedDeckState actionDeck;
@@ -1032,6 +1033,7 @@ bool SaveManager::saveGame(const Game& game,
     out << "GAME\tCREATED_AT\t" << static_cast<long long>(game.createdTime) << "\n";
     out << "GAME\tLAST_SAVED_AT\t" << static_cast<long long>(game.lastSavedTime) << "\n";
     out << "GAME\tASSIGNED_FILE\t" << escapeField(game.assignedSaveFilename) << "\n";
+    out << "GAME\tBOARD_VIEW\t" << escapeField(boardViewModeName(game.boardViewMode)) << "\n";
     out << "GAME\tCURRENT_PLAYER\t" << game.currentPlayerIndex << "\n";
     out << "GAME\tTURN_COUNTER\t" << game.turnCounter << "\n";
     out << "GAME\tRETIRED_COUNT\t" << game.retiredCount << "\n";
@@ -1112,6 +1114,7 @@ bool SaveManager::loadGame(Game& game,
     LoadedGameState data;
     data.rules = makeNormalRules();
     data.settings = createLifeModeSettings();
+    data.boardViewMode = BoardViewMode::FollowCamera;
     data.rngFixedSeed = false;
     data.rngSeedValue = 0;
     data.currentPlayerIndex = 0;
@@ -1177,6 +1180,8 @@ bool SaveManager::loadGame(Game& game,
                 }
             } else if (parts[1] == "ASSIGNED_FILE") {
                 data.assignedFilename = parts[2];
+            } else if (parts[1] == "BOARD_VIEW") {
+                data.boardViewMode = boardViewModeFromName(parts[2]);
             } else if (parts[1] == "CURRENT_PLAYER") {
                 if (!parseInt(parts[2], data.currentPlayerIndex)) {
                     error = "Invalid current player index.";
@@ -1391,6 +1396,7 @@ bool SaveManager::loadGame(Game& game,
     validateGameSettings(data.settings);
     game.settings = data.settings;
     game.rules = data.rules;
+    game.boardViewMode = data.boardViewMode;
     applyGameSettingsToRules(game.settings, game.rules);
     game.bank.configure(game.rules);
     game.players = data.players;

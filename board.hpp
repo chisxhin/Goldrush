@@ -49,6 +49,14 @@ struct BoardRegion {
     int endTileIndex;
 };
 
+enum class BoardViewMode {
+    FollowCamera,
+    ClassicFull
+};
+
+std::string boardViewModeName(BoardViewMode mode);
+BoardViewMode boardViewModeFromName(const std::string& name);
+
 class Board {
 public:
     Board();
@@ -61,7 +69,8 @@ public:
                 const std::vector<Player>& players,
                 int focusPlayerIndex,
                 int highlightedTile,
-                bool hasColor) const;
+                bool hasColor,
+                BoardViewMode viewMode = BoardViewMode::FollowCamera) const;
 
 private:
     std::vector<Tile> tiles;

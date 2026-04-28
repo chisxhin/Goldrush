@@ -134,7 +134,8 @@ std::string cpuReasonForAction(const Player& player, const std::string& action);
 std::string describeTileEffectText(const Tile& tile);
 
 Game::Game()
-    : rules(makeNormalRules()),
+    : boardViewMode(BoardViewMode::FollowCamera),
+      rules(makeNormalRules()),
       rng(),
       cpu(rng),
       decks(rules, rng),
@@ -154,11 +155,14 @@ Game::Game()
       createdTime(0),
       lastSavedTime(0),
       autoAdvanceUi(false),
+      sabotageUnlockAnnounced(false),
+      tutorialFlags(),
       activeTraps() {
 }
 
 Game::Game(std::uint32_t seed)
-    : rules(makeNormalRules()),
+    : boardViewMode(BoardViewMode::FollowCamera),
+      rules(makeNormalRules()),
       rng(seed),
       cpu(rng),
       decks(rules, rng),
@@ -178,6 +182,8 @@ Game::Game(std::uint32_t seed)
       createdTime(0),
       lastSavedTime(0),
       autoAdvanceUi(false),
+      sabotageUnlockAnnounced(false),
+      tutorialFlags(),
       activeTraps() {
 }
 
@@ -739,9 +745,17 @@ Game::StartChoice Game::showStartScreen() {
         int ch = getch();
         if (!choosingMode) {
             if (ch == 'n' || ch == 'N' || ch == 's' || ch == 'S') {
-                choosingMode = true;
-                highlightedMode = 0;
-                continue;
+                GameSettings selectedSettings = settings;
+                if (!showGameModeMenu(selectedSettings, hasColor)) {
+                    continue;
+                }
+                settings = selectedSettings;
+                rules = makeNormalRules();
+                applyGameSettingsToRules(settings, rules);
+                if (!chooseBoardViewMode()) {
+                    continue;
+                }
+                return START_NEW_GAME;
             }
             if (ch == 'l' || ch == 'L') return START_LOAD_GAME;
             if (ch == 27 || ch == 'q' || ch == 'Q') return START_QUIT_GAME;
@@ -773,6 +787,85 @@ Game::StartChoice Game::showStartScreen() {
             }
         }
         if (ch == KEY_RESIZE && !ensureMinSize()) return START_QUIT_GAME;
+    }
+}
+
+bool Game::chooseBoardViewMode() {
+    int selected = boardViewMode == BoardViewMode::ClassicFull ? 1 : 0;
+
+    while (true) {
+        int h = 0;
+        int w = 0;
+        getmaxyx(stdscr, h, w);
+        const int popupW = std::min(78, std::max(60, w - 6));
+        const int popupH = 14;
+        WINDOW* popup = newwin(popupH,
+                               popupW,
+                               std::max(0, (h - popupH) / 2),
+                               std::max(0, (w - popupW) / 2));
+        applyWindowBg(popup);
+        keypad(popup, TRUE);
+
+        while (true) {
+            werase(popup);
+            box(popup, 0, 0);
+            if (hasColor) wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+            mvwprintw(popup, 1, 2, "Choose Board Display");
+            if (hasColor) wattroff(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+
+            const char* names[] = {
+                "Follow Camera Mode",
+                "Classic / Full Board Mode"
+            };
+            const char* descriptions[] = {
+                "Zoomed route view centered on the current player. Minimap stays in the side panel.",
+                "Full route overview using the classic board symbols, regions, and landmarks."
+            };
+
+            for (int i = 0; i < 2; ++i) {
+                const int row = 4 + (i * 3);
+                if (selected == i) wattron(popup, A_REVERSE | A_BOLD);
+                mvwprintw(popup, row, 4, "%d. %-30s", i + 1, names[i]);
+                if (selected == i) wattroff(popup, A_REVERSE | A_BOLD);
+                mvwprintw(popup,
+                          row + 1,
+                          7,
+                          "%s",
+                          clipUiText(descriptions[i], static_cast<std::size_t>(popupW - 10)).c_str());
+            }
+
+            mvwprintw(popup, popupH - 3, 2, "Use UP/DOWN or A/D. ENTER select. ESC back.");
+            mvwprintw(popup, popupH - 2, 2, "Selected: %s", names[selected]);
+            wrefresh(popup);
+
+            const int ch = wgetch(popup);
+            if (ch == KEY_RESIZE) {
+                delwin(popup);
+                if (!ensureMinSize()) {
+                    return false;
+                }
+                break;
+            }
+            if (ch == KEY_UP || ch == KEY_DOWN ||
+                ch == KEY_LEFT || ch == KEY_RIGHT ||
+                ch == 'a' || ch == 'A' ||
+                ch == 'd' || ch == 'D' ||
+                ch == 'w' || ch == 'W' ||
+                ch == 's' || ch == 'S') {
+                selected = selected == 0 ? 1 : 0;
+            } else if (ch == '1' || ch == '2') {
+                selected = ch - '1';
+            } else if (ch == 27) {
+                delwin(popup);
+                return false;
+            } else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+                boardViewMode = selected == 0
+                    ? BoardViewMode::FollowCamera
+                    : BoardViewMode::ClassicFull;
+                delwin(popup);
+                return true;
+            }
+        }
     }
 }
 
@@ -1502,6 +1595,9 @@ void Game::checkTrapTrigger(int playerIndex) {
 
 void Game::setupRules() {
     SaveManager saveManager;
+    validateGameSettings(settings);
+    rules = makeNormalRules();
+    applyGameSettingsToRules(settings, rules);
     decks.reset(rules);
     bank.configure(rules);
     retiredCount = 0;
@@ -1576,7 +1672,7 @@ void Game::setupPlayers() {
         }
         p.token = tokenForName(p.name, i);
         p.tile = 0;
-        p.cash = 10000;
+        p.cash = settings.startingCash;
         p.job = "Unemployed";
         p.salary = 0;
         p.married = false;
@@ -1690,7 +1786,7 @@ void Game::renderHeader() const {
 
 void Game::renderGame(int currentPlayer, const std::string& msg, const std::string& detail) const {
     renderHeader();
-    draw_board_ui(boardWin, board, players, currentPlayer, players[currentPlayer].tile);
+    draw_board_ui(boardWin, board, players, currentPlayer, players[currentPlayer].tile, boardViewMode);
     draw_sidebar_ui(infoWin, board, players, currentPlayer, history.recent(), rules);
     draw_message_ui(msgWin, msg, detail);
 }

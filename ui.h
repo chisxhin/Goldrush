@@ -48,7 +48,8 @@ void draw_board_ui(WINDOW* boardWin,
                    const Board& board,
                    const std::vector<Player>& players,
                    int currentPlayer,
-                   int highlightedTile);
+                   int highlightedTile,
+                   BoardViewMode viewMode = BoardViewMode::FollowCamera);
 int getTileColorPair(const Tile& tile);
 void drawBoardLegend(WINDOW* win);
 void drawCurrentHintBox(WINDOW* win, const Board& board, const Player& player, const RuleSet& rules);

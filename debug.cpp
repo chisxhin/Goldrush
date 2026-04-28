@@ -325,7 +325,8 @@ void showBoardPreview(const std::string& eventTitle,
                       const std::vector<Player>& previewPlayers,
                       int currentPlayerIndex,
                       const std::vector<std::string>& historyLines,
-                      const RuleSet& rules) {
+                      const RuleSet& rules,
+                      BoardViewMode viewMode = BoardViewMode::FollowCamera) {
     if (previewPlayers.empty()) {
         return;
     }
@@ -353,7 +354,12 @@ void showBoardPreview(const std::string& eventTitle,
 
     const int safeCurrent = std::max(0, std::min(currentPlayerIndex, static_cast<int>(previewPlayers.size()) - 1));
     draw_title_banner_ui(titleWin);
-    draw_board_ui(boardWin, board, previewPlayers, previewPlayers[static_cast<std::size_t>(safeCurrent)].tile, safeCurrent);
+    draw_board_ui(boardWin,
+                  board,
+                  previewPlayers,
+                  safeCurrent,
+                  previewPlayers[static_cast<std::size_t>(safeCurrent)].tile,
+                  viewMode);
     draw_sidebar_ui(infoWin, board, previewPlayers, safeCurrent, historyLines, rules);
     drawEventMessage(msgWin, eventTitle, eventMessage);
     waitForEnterPrompt(msgWin, layout.messageHeight - 2, 2, "Press ENTER to continue...");
@@ -981,6 +987,106 @@ void debugEventMessagePanel() {
     destroy_game_ui();
 }
 
+void debugFollowCameraBoardMode() {
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    players[0].tile = 55;
+    showBoardPreview("Follow Camera Board Mode",
+                     "The main board should stay zoomed around Alex while the side panel minimap shows the wider route.",
+                     players,
+                     0,
+                     std::vector<std::string>{
+                         "Alex advanced into Goldrush Valley.",
+                         "The follow camera centers the active player."
+                     },
+                     rules,
+                     BoardViewMode::FollowCamera);
+}
+
+void debugClassicFullBoardMode() {
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    players[0].tile = 55;
+    players[1].tile = 31;
+    players[2].tile = 75;
+    showBoardPreview("Classic Full Board Mode",
+                     "The board should show the full classic route with colored symbols, regions, landmarks, and player markers.",
+                     players,
+                     0,
+                     std::vector<std::string>{
+                         "Classic mode keeps the joylin full-board overview available.",
+                         "The side panel minimap remains available."
+                     },
+                     rules,
+                     BoardViewMode::ClassicFull);
+}
+
+void debugMinimapSupport() {
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    players[0].tile = 64;
+    players[1].tile = 80;
+    showBoardPreview("Minimap Support",
+                     "Check that the current main minimap still draws in the side panel with player markers and route landmarks.",
+                     players,
+                     0,
+                     std::vector<std::string>{
+                         "Minimap should remain active regardless of board view mode."
+                     },
+                     rules,
+                     BoardViewMode::FollowCamera);
+}
+
+void debugPopupOverFollowCamera() {
+    initialize_game_ui();
+    const UILayout layout = calculateUILayout();
+    Board board;
+    RuleSet rules = makeNormalRules();
+    std::vector<Player> players = makeBoardPreviewPlayers();
+    players[0].tile = 47;
+
+    WINDOW* titleWin = newwin(layout.headerHeight, layout.totalWidth, layout.originY, layout.originX);
+    WINDOW* boardWin = newwin(layout.boardHeight, layout.boardWidth, layout.originY + layout.headerHeight, layout.originX);
+    WINDOW* infoWin = newwin(layout.sidePanelHeight,
+                             layout.sidePanelWidth,
+                             layout.originY + layout.headerHeight,
+                             layout.originX + layout.boardWidth);
+    WINDOW* msgWin = newwin(layout.messageHeight,
+                            layout.totalWidth,
+                            layout.originY + layout.headerHeight + layout.boardHeight,
+                            layout.originX);
+
+    apply_ui_background(titleWin);
+    apply_ui_background(boardWin);
+    apply_ui_background(infoWin);
+    apply_ui_background(msgWin);
+
+    draw_title_banner_ui(titleWin);
+    draw_board_ui(boardWin, board, players, 0, players[0].tile, BoardViewMode::FollowCamera);
+    draw_sidebar_ui(infoWin, board, players, 0, std::vector<std::string>{"Popup opened over follow camera."}, rules);
+    drawEventMessage(msgWin, "Popup Redraw Test", "A popup will appear and the board will redraw after it closes.");
+
+    showPopupMessage("Follow Camera Popup",
+                     std::vector<std::string>{
+                         "This popup is drawn over the current follow-camera board.",
+                         "After closing it, the debug screen redraws the board, minimap, and message panel."
+                     },
+                     has_colors(),
+                     false);
+
+    draw_title_banner_ui(titleWin);
+    draw_board_ui(boardWin, board, players, 0, players[0].tile, BoardViewMode::FollowCamera);
+    draw_sidebar_ui(infoWin, board, players, 0, std::vector<std::string>{"Popup closed; board redrawn."}, rules);
+    drawEventMessage(msgWin, "Popup Closed", "The follow-camera board should not be duplicated or misaligned.");
+    waitForEnterPrompt(msgWin, layout.messageHeight - 2, 2, "Press ENTER to continue...");
+
+    delwin(msgWin);
+    delwin(infoWin);
+    delwin(boardWin);
+    delwin(titleWin);
+    destroy_game_ui();
+}
+
 void debugBoardUi() {
     while (true) {
         std::cout << "\n===== BOARD UI DEBUG MENU =====\n"
@@ -994,9 +1100,13 @@ void debugBoardUi() {
                   << "8. Test history formatting\n"
                   << "9. Test current objective box\n"
                   << "10. Test event message panel\n"
-                  << "11. Return\n";
+                  << "11. Test follow camera board mode\n"
+                  << "12. Test classic/full board mode\n"
+                  << "13. Test minimap support\n"
+                  << "14. Test popup over follow-camera mode\n"
+                  << "15. Return\n";
 
-        const int choice = readMenuChoice(1, 11);
+        const int choice = readMenuChoice(1, 15);
         if (choice == 1) {
             debugTileColorsAndSymbols();
         } else if (choice == 2) {
@@ -1017,6 +1127,14 @@ void debugBoardUi() {
             debugCurrentObjectiveBox();
         } else if (choice == 10) {
             debugEventMessagePanel();
+        } else if (choice == 11) {
+            debugFollowCameraBoardMode();
+        } else if (choice == 12) {
+            debugClassicFullBoardMode();
+        } else if (choice == 13) {
+            debugMinimapSupport();
+        } else if (choice == 14) {
+            debugPopupOverFollowCamera();
         } else {
             return;
         }
@@ -1501,14 +1619,21 @@ void debugGameSettingsSaveLoad() {
     std::ifstream in(path.c_str());
     std::string line;
     bool sawSettings = false;
+    bool sawBoardView = false;
     while (std::getline(in, line)) {
         if (line.find("GAME_SETTINGS") == 0) {
             sawSettings = true;
+        }
+        if (line.find("GAME\tBOARD_VIEW\t") == 0) {
+            sawBoardView = true;
+        }
+        if (sawSettings && sawBoardView) {
             break;
         }
     }
 
     std::cout << "Settings record written: " << (sawSettings ? "yes" : "no") << "\n";
+    std::cout << "Board view record written: " << (sawBoardView ? "yes" : "no") << "\n";
     std::cout << "Save path: " << path << "\n";
     std::cout << "Load path uses the same GAME_SETTINGS records in SaveManager::loadGame.\n";
     pauseForEnter();

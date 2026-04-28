@@ -483,8 +483,9 @@ void draw_board_ui(WINDOW* boardWin,
                    const Board& board,
                    const std::vector<Player>& players,
                    int currentPlayer,
-                   int highlightedTile) {
-    board.render(boardWin, players, currentPlayer, highlightedTile, has_colors());
+                   int highlightedTile,
+                   BoardViewMode viewMode) {
+    board.render(boardWin, players, currentPlayer, highlightedTile, has_colors(), viewMode);
 }
 
 void drawBoardLegend(WINDOW* win) {

@@ -50,6 +50,7 @@ private:
     static const int MSG_H = 5;
 
     Board board;
+    BoardViewMode boardViewMode;
     std::vector<Player> players;
     RuleSet rules;
     GameSettings settings;
@@ -95,6 +96,7 @@ private:
     bool loadSavedGame();
 
     StartChoice showStartScreen();
+    bool chooseBoardViewMode();
     bool configureCustomRules();
     void showTutorial();
     void showGuidePopup() const;
