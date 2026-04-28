@@ -18,7 +18,8 @@ const int TOTAL_PAIRS = 8;
 const int TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
 const int STARTING_LIVES = 20;
 const int MAX_HELP_USES = 5;
-const int HELP_REVEAL_SECONDS = 2;
+const int HELP_REVEAL_MS = 900;
+const int MATCH_REVEAL_MS = 90;
 const int CELL_WIDTH = 7;
 const int CELL_HEIGHT = 3;
 const int TOTAL_GRID_WIDTH = GRID_SIZE * CELL_WIDTH;
@@ -77,6 +78,10 @@ void drawCell(WINDOW* win, int y, int x, const std::string& symbol, bool isRevea
     mvwaddch(win, y + CELL_HEIGHT - 1, x, ACS_LLCORNER);
     mvwaddch(win, y + CELL_HEIGHT - 1, x + CELL_WIDTH - 1, ACS_LRCORNER);
 
+    for (int innerX = 1; innerX < CELL_WIDTH - 1; ++innerX) {
+        mvwaddch(win, y + 1, x + innerX, ' ');
+    }
+
     if (isMatched || revealAll) {
         wattron(win, A_BOLD);
         mvwprintw(win, y + 1, x + 2, "%s", symbol.c_str());
@@ -114,7 +119,7 @@ void flashFeedback(WINDOW* win,
     const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
     const int textX = (screenW - static_cast<int>(text.size())) / 2;
 
-    blinkIndicator(win, y, textX, text, hasColor, colorPair, 2, 2000, static_cast<int>(text.size()));
+    blinkIndicator(win, y, textX, text, hasColor, colorPair, 1, 220, static_cast<int>(text.size()));
 }
 
 } // anonymous namespace
@@ -278,7 +283,7 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
                     }
                 }
                 wrefresh(overlay);
-                napms(HELP_REVEAL_SECONDS * 1000);
+                napms(HELP_REVEAL_MS);
                 continue;
             }
         }
@@ -303,7 +308,7 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
                 } else if (cellIdx != firstMatchIdx) {
                     grid[cellIdx].revealed = true;
                     wrefresh(overlay);
-                    napms(500);
+                    napms(MATCH_REVEAL_MS);
                     
                     if (grid[firstMatchIdx].symbol == grid[cellIdx].symbol) {
                         grid[firstMatchIdx].matched = true;

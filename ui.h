@@ -34,8 +34,13 @@ struct GoldrushUiPosition {
 void initialize_game_ui();
 void destroy_game_ui();
 void apply_ui_background(WINDOW* window);
-void draw_board_ui(WINDOW* boardWin, const Board& board, const std::vector<Player>& players, int highlightedTile);
+void draw_board_ui(WINDOW* boardWin,
+                   const Board& board,
+                   const std::vector<Player>& players,
+                   int currentPlayer,
+                   int highlightedTile);
 void draw_sidebar_ui(WINDOW* panelWin,
+                     const Board& board,
                      const std::vector<Player>& players,
                      int currentPlayer,
                      const std::vector<std::string>& historyLines,

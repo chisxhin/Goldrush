@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <clocale>
+#include <utility>
+#include <string>
 #include <vector>
 
 namespace {
@@ -47,9 +49,9 @@ void init_theme_colors() {
     init_pair(GOLDRUSH_CHARCOAL_BLACK, COLOR_WHITE, COLOR_BLACK);
     init_pair(GOLDRUSH_GOLD_SAND, gold, COLOR_BLACK);
     init_pair(GOLDRUSH_PLAYER_ONE, gold, COLOR_BLACK);
-    init_pair(GOLDRUSH_PLAYER_TWO, COLOR_CYAN, COLOR_BLACK);
+    init_pair(GOLDRUSH_PLAYER_TWO, forest, COLOR_BLACK);
     init_pair(GOLDRUSH_PLAYER_THREE, terra, COLOR_BLACK);
-    init_pair(GOLDRUSH_PLAYER_FOUR, forest, COLOR_BLACK);
+    init_pair(GOLDRUSH_PLAYER_FOUR, COLOR_CYAN, COLOR_BLACK);
     init_pair(GOLDRUSH_BLACK_FOREST, forest, COLOR_BLACK);
     init_pair(GOLDRUSH_BLACK_CREAM, brown, COLOR_BLACK);
     init_pair(GOLDRUSH_GOLD_TERRA, terra, COLOR_BLACK);
@@ -69,6 +71,61 @@ void draw_menu_border(bool is_active, int x, int y, int width, int height) {
     mvhline(y + height - 1, x + 1, ACS_HLINE, width - 2);
     mvaddch(y + height - 1, x + width - 1, ACS_LRCORNER);
     attroff(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
+}
+
+bool isSpecialMinimapTile(const Tile& tile) {
+    switch (tile.kind) {
+        case TILE_BLACK:
+        case TILE_SPLIT_START:
+        case TILE_SPLIT_FAMILY:
+        case TILE_SPLIT_RISK:
+        case TILE_PAYDAY:
+        case TILE_MARRIAGE:
+        case TILE_HOUSE:
+        case TILE_BABY:
+        case TILE_GRADUATION:
+        case TILE_NIGHT_SCHOOL:
+        case TILE_SPIN_AGAIN:
+        case TILE_CAREER_2:
+            return true;
+        default:
+            return false;
+    }
+}
+
+void drawMinimapDot(WINDOW* panelWin, int y, int x, const char* glyph, int colorPair) {
+    wattron(panelWin, COLOR_PAIR(colorPair) | A_BOLD);
+    mvwprintw(panelWin, y, x, "%s", glyph);
+    wattroff(panelWin, COLOR_PAIR(colorPair) | A_BOLD);
+}
+
+std::vector<std::pair<int, int> > minimapConnections(const Board& board) {
+    std::vector<std::pair<int, int> > connections;
+    for (int i = 0; i < TILE_COUNT; ++i) {
+        const Tile& tile = board.tileAt(i);
+        if (tile.next >= 0) {
+            connections.push_back(std::make_pair(i, tile.next));
+        }
+        if (tile.altNext >= 0) {
+            connections.push_back(std::make_pair(i, tile.altNext));
+        }
+    }
+    return connections;
+}
+
+void drawMiniLine(WINDOW* panelWin, int y1, int x1, int y2, int x2) {
+    wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND) | A_DIM);
+    int x = x1;
+    int y = y1;
+    while (x != x2) {
+        x += (x2 > x) ? 1 : -1;
+        mvwaddch(panelWin, y, x, '.');
+    }
+    while (y != y2) {
+        y += (y2 > y) ? 1 : -1;
+        mvwaddch(panelWin, y, x, '.');
+    }
+    wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND) | A_DIM);
 }
 }  // namespace
 
@@ -120,111 +177,111 @@ void draw_title_banner_ui(WINDOW* titleWin) {
     wrefresh(titleWin);
 }
 
-void draw_board_ui(WINDOW* boardWin, const Board& board, const std::vector<Player>& players, int highlightedTile) {
-    board.render(boardWin, players, has_colors());
-    if (highlightedTile >= 0 && highlightedTile < TILE_COUNT) {
-        const Tile& tile = board.tileAt(highlightedTile);
-        int maxY = 0;
-        int maxX = 0;
-        getmaxyx(boardWin, maxY, maxX);
-
-        const int leftMarkerX = tile.x;
-        const int rightMarkerX = tile.x + 3;
-        int pointerY = tile.y + 1;
-        chtype pointerChar = '^';
-        if (pointerY >= maxY - 1) {
-            pointerY = tile.y - 1;
-            pointerChar = 'v';
-        }
-
-        const int attrs = A_BOLD;
-        if (has_colors()) {
-            wattron(boardWin, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | attrs);
-        } else {
-            wattron(boardWin, A_REVERSE | A_BOLD);
-        }
-
-        if (leftMarkerX > 0 && rightMarkerX < maxX - 1) {
-            mvwaddch(boardWin, tile.y, leftMarkerX, '<');
-            mvwaddch(boardWin, tile.y, rightMarkerX, '>');
-        }
-        if (pointerY > 0 && pointerY < maxY - 1 && tile.x + 2 < maxX - 1) {
-            mvwaddch(boardWin, pointerY, tile.x + 2, pointerChar);
-        }
-
-        if (has_colors()) {
-            wattroff(boardWin, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | attrs);
-        } else {
-            wattroff(boardWin, A_REVERSE | A_BOLD);
-        }
-        wrefresh(boardWin);
-    }
+void draw_board_ui(WINDOW* boardWin,
+                   const Board& board,
+                   const std::vector<Player>& players,
+                   int currentPlayer,
+                   int highlightedTile) {
+    board.render(boardWin, players, currentPlayer, highlightedTile, has_colors());
 }
 
 void draw_sidebar_ui(WINDOW* panelWin,
+                     const Board& board,
                      const std::vector<Player>& players,
                      int currentPlayer,
                      const std::vector<std::string>& historyLines,
                      const RuleSet& rules) {
+    (void)historyLines;
     werase(panelWin);
     box(panelWin, 0, 0);
 
     wattron(panelWin, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
-    mvwprintw(panelWin, 1, 2, "PLAYERS");
-    mvwprintw(panelWin, 15, 2, "HISTORY");
-    mvwprintw(panelWin, 23, 2, "MODE");
+    mvwprintw(panelWin, 1, 2, "MINI MAP");
     wattroff(panelWin, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
+
+    const int mapTop = 3;
+    const int mapLeft = 3;
+    const int mapWidth = 32;
+    const int mapHeight = 11;
+    int minTileX = board.tileAt(0).x;
+    int maxTileX = board.tileAt(0).x;
+    int minTileY = board.tileAt(0).y;
+    int maxTileY = board.tileAt(0).y;
+    for (int i = 1; i < TILE_COUNT; ++i) {
+        const Tile& tile = board.tileAt(i);
+        minTileX = std::min(minTileX, tile.x);
+        maxTileX = std::max(maxTileX, tile.x);
+        minTileY = std::min(minTileY, tile.y);
+        maxTileY = std::max(maxTileY, tile.y);
+    }
+
+    wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
+    mvwhline(panelWin, 2, 1, ACS_HLINE, 38);
+    mvwhline(panelWin, mapTop + mapHeight + 1, 1, ACS_HLINE, 38);
+    wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
+
+    const std::vector<std::pair<int, int> > connections = minimapConnections(board);
+    for (std::size_t i = 0; i < connections.size(); ++i) {
+        const Tile& from = board.tileAt(connections[i].first);
+        const Tile& to = board.tileAt(connections[i].second);
+        const int fromX = mapLeft + ((from.x - minTileX) * (mapWidth - 1)) / std::max(1, maxTileX - minTileX);
+        const int fromY = mapTop + ((from.y - minTileY) * (mapHeight - 1)) / std::max(1, maxTileY - minTileY);
+        const int toX = mapLeft + ((to.x - minTileX) * (mapWidth - 1)) / std::max(1, maxTileX - minTileX);
+        const int toY = mapTop + ((to.y - minTileY) * (mapHeight - 1)) / std::max(1, maxTileY - minTileY);
+        drawMiniLine(panelWin, fromY, fromX, toY, toX);
+    }
+
+    for (int i = 0; i < TILE_COUNT; ++i) {
+        const Tile& tile = board.tileAt(i);
+        const int drawX = mapLeft + ((tile.x - minTileX) * (mapWidth - 1)) / std::max(1, maxTileX - minTileX);
+        const int drawY = mapTop + ((tile.y - minTileY) * (mapHeight - 1)) / std::max(1, maxTileY - minTileY);
+
+        const bool playerOneHere = players.size() > 0 && players[0].tile == i;
+        const bool playerTwoHere = players.size() > 1 && players[1].tile == i;
+
+        if (playerOneHere && playerTwoHere) {
+            drawMinimapDot(panelWin, drawY, drawX, "◎", GOLDRUSH_GOLD_TERRA);
+        } else if (playerOneHere) {
+            drawMinimapDot(panelWin, drawY, drawX, "●", GOLDRUSH_PLAYER_ONE);
+        } else if (playerTwoHere) {
+            drawMinimapDot(panelWin, drawY, drawX, "●", GOLDRUSH_BLACK_FOREST);
+        } else if (tile.kind == TILE_RETIREMENT) {
+            drawMinimapDot(panelWin, drawY, drawX, "★", GOLDRUSH_GOLD_TERRA);
+        } else if (isSpecialMinimapTile(tile)) {
+            drawMinimapDot(panelWin, drawY, drawX, "◆", GOLDRUSH_BLACK_TERRA);
+        } else {
+            drawMinimapDot(panelWin, drawY, drawX, "·", GOLDRUSH_BROWN_CREAM);
+        }
+    }
+
+    mvwprintw(panelWin, mapTop + mapHeight + 2, 2, "P1");
+    drawMinimapDot(panelWin, mapTop + mapHeight + 2, 6, "●", GOLDRUSH_PLAYER_ONE);
+    mvwprintw(panelWin, mapTop + mapHeight + 2, 9, "Gold");
+    mvwprintw(panelWin, mapTop + mapHeight + 3, 2, "P2");
+    drawMinimapDot(panelWin, mapTop + mapHeight + 3, 6, "●", GOLDRUSH_BLACK_FOREST);
+    mvwprintw(panelWin, mapTop + mapHeight + 3, 9, "Green");
 
     if (!players.empty() && currentPlayer >= 0 && currentPlayer < static_cast<int>(players.size())) {
         const Player& player = players[currentPlayer];
-        std::string home = player.retirementHome.empty() ? "--" : player.retirementHome;
-        std::string invest = player.investedNumber > 0 ? std::to_string(player.investedNumber) : "-";
+        const std::string home = player.retirementHome.empty() ? "--" : player.retirementHome;
+        const std::string invest = player.investedNumber > 0 ? std::to_string(player.investedNumber) : "-";
+        const int statsY = mapTop + mapHeight + 5;
 
         wattron(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
-        mvwprintw(panelWin, 3, 2, "P%d %.12s [%c] %s",
-                  currentPlayer + 1,
-                  player.name.c_str(),
-                  player.token,
-                  player.type == PlayerType::CPU ? "CPU" : "HUM");
+        mvwprintw(panelWin, statsY, 2, "%-.24s's trail", player.name.c_str());
         wattroff(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
 
         wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
-        mvwprintw(panelWin, 5, 2, "Cash:%d Loans:%d", player.cash, player.loans);
-        mvwprintw(panelWin, 6, 2, "Married:%s Kids:%d Pets:%d",
+        mvwprintw(panelWin, statsY + 1, 2, "Cash:%d  Loans:%d", player.cash, player.loans);
+        mvwprintw(panelWin, statsY + 2, 2, "Job:%-.15s  Inv:%s", player.job.c_str(), invest.c_str());
+        mvwprintw(panelWin, statsY + 3, 2, "Married:%s Kids:%d Pets:%d",
                   player.married ? "Y" : "N",
                   player.kids,
                   static_cast<int>(player.petCards.size()));
-        mvwprintw(panelWin, 7, 2, "Invest:%s Job:%-.14s", invest.c_str(), player.job.c_str());
-        mvwprintw(panelWin, 8, 2, "Home:%-.26s", home.c_str());
-        if (player.type == PlayerType::CPU) {
-            mvwprintw(panelWin, 9, 2, "CPU Difficulty:%-.12s", cpuDifficultyLabel(player.cpuDifficulty).c_str());
-        } else {
-            mvwprintw(panelWin, 9, 2, "Defense Shields:%d Insurance:%d", player.shieldCards, player.insuranceUses);
-        }
-        if (player.sabotageCooldown > 0 || player.skipNextTurn || player.salaryReductionTurns > 0) {
-            mvwprintw(panelWin, 10, 2, "Sab CD:%d Skip:%s Sal:%d",
-                      player.sabotageCooldown,
-                      player.skipNextTurn ? "Y" : "N",
-                      player.salaryReductionTurns);
-        }
+        mvwprintw(panelWin, statsY + 4, 2, "Home:%-.24s", home.c_str());
+        mvwprintw(panelWin, statsY + 5, 2, "%-.34s", rules.editionName.c_str());
         wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
     }
-
-    wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
-    for (size_t i = 0; i < historyLines.size() && i < 6; ++i) {
-        mvwprintw(panelWin, 16 + static_cast<int>(i), 2, "%-.34s", historyLines[i].c_str());
-    }
-
-    mvwprintw(panelWin, 24, 2, "%-.34s", rules.editionName.c_str());
-    mvwprintw(panelWin, 25, 2, "Tut:%s Inv:%s Pets:%s",
-              rules.toggles.tutorialEnabled ? "Y" : "N",
-              rules.toggles.investmentEnabled ? "Y" : "N",
-              rules.toggles.petsEnabled ? "Y" : "N");
-    mvwprintw(panelWin, 26, 2, "Risk:%s Night:%s Spin:%s",
-              rules.toggles.riskyRouteEnabled ? "Y" : "N",
-              rules.toggles.nightSchoolEnabled ? "Y" : "N",
-              rules.toggles.spinToWinEnabled ? "Y" : "N");
-    wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
 
     wrefresh(panelWin);
 }
@@ -339,6 +396,5 @@ void update_position_highlights(WINDOW* boardWin,
                                 int playerIndex) {
     (void)current_position;
     (void)previous_position;
-    (void)playerIndex;
-    board.render(boardWin, players, has_colors());
+    board.render(boardWin, players, playerIndex, current_position, has_colors());
 }

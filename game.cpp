@@ -1680,8 +1680,8 @@ void Game::renderHeader() const {
 
 void Game::renderGame(int currentPlayer, const std::string& msg, const std::string& detail) const {
     renderHeader();
-    draw_board_ui(boardWin, board, players, players[currentPlayer].tile);
-    draw_sidebar_ui(infoWin, players, currentPlayer, history.recent(), rules);
+    draw_board_ui(boardWin, board, players, currentPlayer, players[currentPlayer].tile);
+    draw_sidebar_ui(infoWin, board, players, currentPlayer, history.recent(), rules);
     draw_message_ui(msgWin, msg, detail);
 }
 
@@ -2258,11 +2258,11 @@ int Game::findPreviousTile(const Player& player, int tileId) const {
     if (tileId == 38) {
         return player.startChoice == 0 ? 24 : 37;
     }
+    if (tileId == 79) {
+        return player.familyChoice == 0 ? 68 : 78;
+    }
     if (tileId == 86) {
         return player.riskChoice == 0 ? 82 : 85;
-    }
-    if (tileId == 87) {
-        return player.familyChoice == 0 ? 72 : 86;
     }
 
     return candidates.back();
@@ -2300,7 +2300,7 @@ std::string Game::movePlayerByAction(int playerIndex, int steps) {
             message = "STOP! " + player.name + " hit " + landed.label;
         }
         renderGame(playerIndex, message, "Action card movement...");
-        napms(150);
+        napms(200);
 
         if (board.isStopSpace(landed)) {
             stoppedOnSpace = true;
@@ -2850,7 +2850,7 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
 }
 
 int Game::chooseNextTile(Player& player, const Tile& tile) {
-    if (tile.kind == TILE_SPLIT_START && player.startChoice == -1) {
+    if ((tile.kind == TILE_SPLIT_START || tile.kind == TILE_START) && player.startChoice == -1) {
         const int playerIndex = findPlayerIndex(player);
         int c = 0;
         if (isCpuPlayer(playerIndex)) {
@@ -2901,7 +2901,7 @@ int Game::chooseNextTile(Player& player, const Tile& tile) {
         return player.riskChoice == 0 ? tile.next : tile.altNext;
     }
 
-    if (tile.kind == TILE_SPLIT_START) {
+    if (tile.kind == TILE_SPLIT_START || tile.kind == TILE_START) {
         return player.startChoice == 0 ? tile.next : tile.altNext;
     }
 
@@ -2922,7 +2922,7 @@ bool Game::animateMove(int currentPlayer, int steps) {
             message = "STOP! " + player.name + " hit " + getTileDisplayName(landed);
         }
         renderGame(currentPlayer, message, "Movement in progress...");
-        napms(170);
+        napms(200);
         checkTrapTrigger(currentPlayer);
         const Tile& afterTrap = board.tileAt(player.tile);
 

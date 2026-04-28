@@ -52,6 +52,8 @@ public:
     std::vector<std::string> tutorialLegend() const;
     void render(WINDOW* boardWin,
                 const std::vector<Player>& players,
+                int focusPlayerIndex,
+                int highlightedTile,
                 bool hasColor) const;
 
 private:
@@ -59,8 +61,4 @@ private:
 
     void initTiles();
     int colorForTile(const Tile& tile) const;
-    void drawTreeGuides(WINDOW* boardWin) const;
-    void drawBoardGrid(WINDOW* boardWin) const;
-    void drawTile(WINDOW* boardWin, const Tile& tile, bool hasColor) const;
-    void drawTokens(WINDOW* boardWin, const std::vector<Player>& players, int tileIndex, bool hasColor) const;
 };
