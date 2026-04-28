@@ -5,7 +5,7 @@
 #include <ncurses.h>
 
 namespace {
-const int FULL_HEADER_HEIGHT = 8;
+const int FULL_HEADER_HEIGHT = 9;
 const int FULL_BOARD_WIDTH = 82;
 const int FULL_BOARD_HEIGHT = 31;
 const int FULL_SIDE_PANEL_WIDTH = 42;
@@ -43,9 +43,9 @@ UILayout calculateUILayout(int termHeight, int termWidth) {
 }
 
 int minimumGameWidth() {
-    return COMPACT_BOARD_WIDTH + COMPACT_SIDE_PANEL_WIDTH;
+    return 124;
 }
 
 int minimumGameHeight() {
-    return COMPACT_HEADER_HEIGHT + COMPACT_BOARD_HEIGHT + COMPACT_MESSAGE_HEIGHT;
+    return 45;
 }

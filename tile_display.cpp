@@ -16,11 +16,7 @@ std::string getTileFullName(TileKind kind) {
         case TILE_SAFE: return "Safe Route";
         case TILE_RISKY: return "Risk Event";
         case TILE_SPIN_AGAIN: return "Spin Again";
-<<<<<<< HEAD
         case TILE_CAREER_2: return "Work";
-=======
-        case TILE_CAREER_2: return "Career Boost";
->>>>>>> 31eecd1273a15126e311ba1e9b44f2968283fbe7
         case TILE_PAYDAY: return "Salary Payday";
         case TILE_BABY: return "Family Event";
         case TILE_RETIREMENT: return "Retirement";

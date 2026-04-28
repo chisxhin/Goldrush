@@ -31,6 +31,8 @@ struct RuleSet {
     ComponentSet components;
     int loanUnit;
     int loanRepaymentCost;
+    int maxLoans;
+    bool automaticLoansEnabled;
     int investmentMatchPayout;
     int spinToWinPrize;
 };

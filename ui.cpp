@@ -3,12 +3,9 @@
 #include <algorithm>
 #include <cctype>
 #include <clocale>
-<<<<<<< HEAD
 #include <utility>
 #include <string>
-=======
 #include <sstream>
->>>>>>> 31eecd1273a15126e311ba1e9b44f2968283fbe7
 #include <vector>
 
 #include "tile_display.h"
@@ -190,7 +187,6 @@ void initGameColors() {
     init_pair(GOLDRUSH_TILE_ROUTE, gold, COLOR_BLACK);
 }
 
-<<<<<<< HEAD
 void draw_menu_border(bool is_active, int x, int y, int width, int height) {
     if (!is_active) return;
     attron(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
@@ -261,10 +257,7 @@ void drawMiniLine(WINDOW* panelWin, int y1, int x1, int y2, int x2) {
     }
     wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND) | A_DIM);
 }
-}  // namespace
 
-=======
->>>>>>> 31eecd1273a15126e311ba1e9b44f2968283fbe7
 void initialize_game_ui() {
     std::setlocale(LC_ALL, "");
     initscr();
@@ -363,14 +356,14 @@ void draw_title_banner_ui(WINDOW* titleWin) {
     wrefresh(titleWin);
 }
 
-<<<<<<< HEAD
 void draw_board_ui(WINDOW* boardWin,
                    const Board& board,
                    const std::vector<Player>& players,
                    int currentPlayer,
                    int highlightedTile) {
     board.render(boardWin, players, currentPlayer, highlightedTile, has_colors());
-=======
+}
+
 void drawBoardLegend(WINDOW* win) {
     if (!win) {
         return;
@@ -590,67 +583,12 @@ void drawEventMessage(WINDOW* messageWin, const std::string& title, const std::s
     wrefresh(messageWin);
 }
 
-void draw_board_ui(WINDOW* boardWin,
-                   const Board& board,
-                   const std::vector<Player>& players,
-                   int highlightedTile,
-                   int currentPlayerIndex) {
-    board.render(boardWin, players, has_colors());
-
-    if (currentPlayerIndex < 0 ||
-        currentPlayerIndex >= static_cast<int>(players.size()) ||
-        highlightedTile < 0 ||
-        highlightedTile >= TILE_COUNT) {
-        return;
-    }
-
-    const Tile& tile = board.tileAt(highlightedTile);
-    int occupants = 0;
-    for (std::size_t i = 0; i < players.size(); ++i) {
-        if (players[i].tile == highlightedTile) {
-            ++occupants;
-        }
-    }
-
-    std::string marker = occupants > 1
-        ? "[2P]"
-        : "<P" + std::to_string(currentPlayerIndex + 1) + ">";
-
-    if (marker.size() > 4) {
-        marker = "<P" + std::to_string(currentPlayerIndex + 1);
-        if (marker.size() > 4) {
-            marker = "[P+]";
-        }
-    }
-
-    static int lastAnimatedPlayer = -1;
-    if (lastAnimatedPlayer != currentPlayerIndex) {
-        blinkIndicator(boardWin,
-                       tile.y,
-                       tile.x,
-                       marker,
-                       has_colors(),
-                       ui_player_color_pair(currentPlayerIndex),
-                       2,
-                       2000,
-                       4);
-        lastAnimatedPlayer = currentPlayerIndex;
-    } else {
-        wattron(boardWin, COLOR_PAIR(ui_player_color_pair(currentPlayerIndex)) | A_BOLD | A_REVERSE);
-        mvwprintw(boardWin, tile.y, tile.x, "%-4s", marker.c_str());
-        wattroff(boardWin, COLOR_PAIR(ui_player_color_pair(currentPlayerIndex)) | A_BOLD | A_REVERSE);
-        wrefresh(boardWin);
-    }
->>>>>>> 31eecd1273a15126e311ba1e9b44f2968283fbe7
-}
-
 void draw_sidebar_ui(WINDOW* panelWin,
                      const Board& board,
                      const std::vector<Player>& players,
                      int currentPlayer,
                      const std::vector<std::string>& historyLines,
                      const RuleSet& rules) {
-<<<<<<< HEAD
     (void)historyLines;
     werase(panelWin);
     box(panelWin, 0, 0);
@@ -742,50 +680,6 @@ void draw_sidebar_ui(WINDOW* panelWin,
         mvwprintw(panelWin, statsY + 5, 2, "%-.34s", rules.editionName.c_str());
         wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
     }
-
-=======
-    int panelHeight = 0;
-    int panelWidth = 0;
-    getmaxyx(panelWin, panelHeight, panelWidth);
-    const bool compact = panelHeight < 31 || panelWidth < 42;
-    const int hintHeight = compact ? 3 : 4;
-    const int hintY = compact ? 19 : 19;
-    const int legendHeaderY = compact ? 22 : 23;
-    const int legendY = compact ? 23 : 24;
-    const int historyHeaderY = compact ? 25 : 26;
-    const int historyStartY = compact ? 26 : 27;
-    const int historyMaxLines = compact ? 2 : 3;
-    const int legendWidth = std::max(20, panelWidth - 4);
-    const int hintWidth = std::max(20, panelWidth - 2);
-    const int historyWidth = std::max(12, panelWidth - 5);
-
-    werase(panelWin);
-    box(panelWin, 0, 0);
-
-    if (!players.empty() && currentPlayer >= 0 && currentPlayer < static_cast<int>(players.size())) {
-        drawPlayerPanel(panelWin, board, players, currentPlayer);
-
-        WINDOW* hintWin = derwin(panelWin, hintHeight, hintWidth, hintY, 1);
-        apply_ui_background(hintWin);
-        drawCurrentHintBox(hintWin, board, players[static_cast<std::size_t>(currentPlayer)], rules);
-        delwin(hintWin);
-    }
-
-    drawPanelHeader(panelWin, legendHeaderY, "LEGEND");
-    WINDOW* legendWin = derwin(panelWin, 2, legendWidth, legendY, 2);
-    apply_ui_background(legendWin);
-    drawBoardLegend(legendWin);
-    delwin(legendWin);
-
-    drawPanelHeader(panelWin, historyHeaderY, "HISTORY");
-    for (std::size_t i = 0; i < historyLines.size() && i < static_cast<std::size_t>(historyMaxLines); ++i) {
-        const int colorPair = getHistoryEventColor(historyLines[i]);
-        const std::string formatted = clipPanelText(formatHistoryEvent(historyLines[i]), static_cast<std::size_t>(historyWidth));
-        wattron(panelWin, COLOR_PAIR(colorPair));
-        mvwprintw(panelWin, historyStartY + static_cast<int>(i), 2, "%-*s", historyWidth, formatted.c_str());
-        wattroff(panelWin, COLOR_PAIR(colorPair));
-    }
->>>>>>> 31eecd1273a15126e311ba1e9b44f2968283fbe7
     wrefresh(panelWin);
 }
 
@@ -893,9 +787,5 @@ void update_position_highlights(WINDOW* boardWin,
                                 int previous_position,
                                 int playerIndex) {
     (void)previous_position;
-<<<<<<< HEAD
     board.render(boardWin, players, playerIndex, current_position, has_colors());
-=======
-    draw_board_ui(boardWin, board, players, current_position, playerIndex);
->>>>>>> 31eecd1273a15126e311ba1e9b44f2968283fbe7
 }

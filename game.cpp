@@ -1695,11 +1695,7 @@ void Game::renderHeader() const {
 
 void Game::renderGame(int currentPlayer, const std::string& msg, const std::string& detail) const {
     renderHeader();
-<<<<<<< HEAD
     draw_board_ui(boardWin, board, players, currentPlayer, players[currentPlayer].tile);
-=======
-    draw_board_ui(boardWin, board, players, players[currentPlayer].tile, currentPlayer);
->>>>>>> 31eecd1273a15126e311ba1e9b44f2968283fbe7
     draw_sidebar_ui(infoWin, board, players, currentPlayer, history.recent(), rules);
     draw_message_ui(msgWin, msg, detail);
 }

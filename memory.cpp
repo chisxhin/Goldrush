@@ -1,4 +1,5 @@
 #include "memory.hpp"
+#include "input_helpers.h"
 #include "minigame_tutorials.h"
 #include "timer_display.h"
 #include "ui.h"
@@ -10,6 +11,11 @@
 #include <random>
 #include <ctime>
 #include <vector>
+
+std::vector<std::string> getMemoryMatchSymbols(bool unicodeSupported) {
+    (void)unicodeSupported;
+    return {"A", "B", "C", "D", "E", "F", "G", "H"};
+}
 
 namespace {
 
@@ -24,7 +30,7 @@ const int CELL_WIDTH = 7;
 const int CELL_HEIGHT = 3;
 const int TOTAL_GRID_WIDTH = GRID_SIZE * CELL_WIDTH;
 
-const std::vector<std::string> SYMBOLS = {
+[[maybe_unused]] const std::vector<std::string> SYMBOLS = {
     "★", "▶", "𒊹", "■", "⬟", "✚", "❤", "ⵌ"
 };
 
@@ -44,10 +50,11 @@ struct Cell {
 };
 
 void shuffleGrid(std::vector<Cell>& grid) {
+    const std::vector<std::string> symbolPool = getMemoryMatchSymbols(false);
     std::vector<std::string> symbols;
     for (int i = 0; i < TOTAL_PAIRS; ++i) {
-        symbols.push_back(SYMBOLS[i]);
-        symbols.push_back(SYMBOLS[i]);
+        symbols.push_back(symbolPool[static_cast<std::size_t>(i)]);
+        symbols.push_back(symbolPool[static_cast<std::size_t>(i)]);
     }
     
     std::shuffle(symbols.begin(), symbols.end(), std::mt19937(std::random_device()()));
@@ -110,6 +117,42 @@ void drawAsciiTitle(WINDOW* win, int screenW, bool hasColor) {
     }
 }
 
+void drawMemoryMatchMemorizePopup(WINDOW* win,
+                                  int screenH,
+                                  int screenW,
+                                  int arenaRight,
+                                  int remaining,
+                                  bool hasColor) {
+    const int popupW = 34;
+    const int popupH = 9;
+    int popupY = 10;
+    int popupX = arenaRight + 2;
+    if (popupX + popupW >= screenW - 1) {
+        popupX = (screenW - popupW) / 2;
+        popupY = std::max(1, (screenH - popupH) / 2);
+    }
+
+    if (hasColor) {
+        wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+    }
+    mvwhline(win, popupY, popupX, ACS_HLINE, popupW);
+    mvwhline(win, popupY + popupH - 1, popupX, ACS_HLINE, popupW);
+    mvwvline(win, popupY, popupX, ACS_VLINE, popupH);
+    mvwvline(win, popupY, popupX + popupW - 1, ACS_VLINE, popupH);
+    mvwaddch(win, popupY, popupX, ACS_ULCORNER);
+    mvwaddch(win, popupY, popupX + popupW - 1, ACS_URCORNER);
+    mvwaddch(win, popupY + popupH - 1, popupX, ACS_LLCORNER);
+    mvwaddch(win, popupY + popupH - 1, popupX + popupW - 1, ACS_LRCORNER);
+    mvwprintw(win, popupY + 1, popupX + 8, "MEMORIZE NOW!");
+    if (hasColor) {
+        wattroff(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+    }
+    mvwprintw(win, popupY + 3, popupX + 2, "Study the cards carefully.");
+    mvwprintw(win, popupY + 4, popupX + 2, "Cards will flip over soon.");
+    mvwprintw(win, popupY + 6, popupX + 2, "Time Remaining: %d", remaining);
+    mvwprintw(win, popupY + 7, popupX + 2, "Remember the matching pairs.");
+}
+
 void flashFeedback(WINDOW* win,
                    int y,
                    int screenW,
@@ -133,7 +176,7 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
 
     showMinigameTutorial("Memory Match",
                          "Memorize the grid, then find all matching pairs.",
-                         "WASD moves, Enter/Space selects, H reveals help, ESC exits.",
+                         "WASD or arrows move. Enter/Space selects. H reveals help. ESC exits.",
                          "Match all 8 pairs before running out of lives.",
                          "Each pair pays $100. Clearing the board adds a $200 bonus.",
                          hasColor);
@@ -237,6 +280,7 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
                                (screenW - static_cast<int>(timer.size())) / 2,
                                remaining,
                                hasColor);
+            drawMemoryMatchMemorizePopup(overlay, screenH, screenW, arenaRight, remaining, hasColor);
             wrefresh(overlay);
             
             if (std::time(nullptr) - memorizationStart >= 5) {
@@ -266,7 +310,8 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
         
         int ch = wgetch(overlay);
         
-        if (ch == 27 || ch == 'q' || ch == 'Q') {
+        const InputAction action = getInputAction(ch, ControlScheme::SinglePlayer);
+        if (action == InputAction::Cancel) {
             result.abandoned = true;
             break;
         }
@@ -288,16 +333,16 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
             }
         }
         
-        if (ch == 'w' || ch == 'W') {
+        if (action == InputAction::Up) {
             currentRow = (currentRow - 1 + GRID_SIZE) % GRID_SIZE;
-        } else if (ch == 's' || ch == 'S') {
+        } else if (action == InputAction::Down) {
             currentRow = (currentRow + 1) % GRID_SIZE;
-        } else if (ch == 'a' || ch == 'A') {
+        } else if (action == InputAction::Left) {
             currentCol = (currentCol - 1 + GRID_SIZE) % GRID_SIZE;
-        } else if (ch == 'd' || ch == 'D') {
+        } else if (action == InputAction::Right) {
             currentCol = (currentCol + 1) % GRID_SIZE;
         }
-        else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == ' ') {
+        else if (action == InputAction::Confirm || action == InputAction::Fire) {
             int cellIdx = currentRow * GRID_SIZE + currentCol;
             
             if (!grid[cellIdx].matched && !grid[cellIdx].revealed) {

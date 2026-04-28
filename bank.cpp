@@ -1,5 +1,7 @@
 #include "bank.hpp"
 
+#include <algorithm>
+
 Bank::Bank(const RuleSet& rules)
     : ruleset(rules) {
 }
@@ -25,7 +27,9 @@ PaymentResult Bank::charge(Player& player, int amount) const {
     }
 
     player.cash -= amount;
-    while (player.cash < 0) {
+    while (player.cash < 0 &&
+           ruleset.automaticLoansEnabled &&
+           player.loans < ruleset.maxLoans) {
         player.cash += ruleset.loanUnit;
         ++player.loans;
         ++result.loansTaken;
@@ -41,6 +45,9 @@ int Bank::issueLoan(Player& player, int amount) const {
     int loansIssued = amount / ruleset.loanUnit;
     if (amount % ruleset.loanUnit != 0) {
         ++loansIssued;
+    }
+    if (ruleset.maxLoans >= 0) {
+        loansIssued = std::min(loansIssued, std::max(0, ruleset.maxLoans - player.loans));
     }
 
     player.loans += loansIssued;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 struct MemoryMatchResult {
     int pairsMatched;   // Number of pairs correctly matched (0-8)
@@ -10,3 +11,4 @@ struct MemoryMatchResult {
 };
 
 MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool hasColor);
+std::vector<std::string> getMemoryMatchSymbols(bool unicodeSupported);

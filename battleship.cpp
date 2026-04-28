@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "minigame_tutorials.h"
+#include "input_helpers.h"
 #include "ui.h"
 #include "ui_helpers.h"
 
@@ -127,9 +128,9 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
 
     showMinigameTutorial("Battleship",
                          "Destroy the money ships while dodging enemy fire.",
-                         "A/D moves, Space shoots, X starts, ESC exits.",
+                         "Press X to start. A/D or arrows move. Space/Enter fires. R reloads.",
                          "Clear the wave or survive until the run ends.",
-                         "Each ship destroyed pays $100. One enemy hit ends the run.",
+                         "Each ship destroyed pays $100. Ammo is limited.",
                          hasColor);
 
     int screenH = 0;
@@ -177,6 +178,8 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
     std::string feedbackText;
     int feedbackFrames = 0;
     bool feedbackPositive = true;
+    const int maxAmmo = 3;
+    int ammo = maxAmmo;
 
     std::vector<Shot> playerShots;
     std::vector<Shot> enemyShots;
@@ -188,7 +191,7 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
 
         const std::string statusLine =
             playerName + " vs Enemy Fleet  |  Score: " + std::to_string(result.shipsDestroyed) +
-            "  |  Wave: 1";
+            "  |  Wave: 1  |  Ammo: " + std::to_string(ammo) + " / " + std::to_string(maxAmmo);
         mvwprintw(overlay, 8, (screenW - static_cast<int>(statusLine.size())) / 2,
                   "%s", statusLine.c_str());
         if (feedbackFrames > 0 && ((feedbackFrames / 2) % 2 == 0)) {
@@ -251,7 +254,8 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
             }
         }
 
-        mvwprintw(overlay, arenaBottom + 2, arenaLeft, "LEFT: A  RIGHT: D  SHOOT: SPACE");
+        mvwprintw(overlay, arenaBottom + 2, arenaLeft,
+                  "MOVE: A/D or LEFT/RIGHT  FIRE: SPACE/ENTER  RELOAD: R");
 
         if (waitingForStart) {
             mvwprintw(overlay, arenaBottom + 4, arenaLeft,
@@ -272,13 +276,14 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
         wrefresh(overlay);
 
         int ch = wgetch(overlay);
-        if (ch == 27 || ch == 'q' || ch == 'Q') {
+        const InputAction action = getInputAction(ch, ControlScheme::SinglePlayer);
+        if (action == InputAction::Cancel) {
             result.abandoned = true;
             break;
         }
 
         if (waitingForStart) {
-            if (ch == 'x' || ch == 'X') {
+            if (action == InputAction::Start) {
                 waitingForStart = false;
             } else {
                 napms(20);
@@ -294,17 +299,33 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
             continue;
         }
 
-        if (ch == 'a' || ch == 'A') {
+        if (action == InputAction::Left) {
             playerX -= 2;
-        } else if (ch == 'd' || ch == 'D') {
+        } else if (action == InputAction::Right) {
             playerX += 2;
-        } else if (ch == ' ') {
-            if (playerShots.size() < 2) {
+        } else if (action == InputAction::Fire || action == InputAction::Confirm) {
+            if (ammo <= 0) {
+                feedbackText = "Out of ammo! Press R to reload.";
+                feedbackFrames = 24;
+                feedbackPositive = false;
+            } else if (playerShots.size() < 2) {
                 Shot shot;
                 shot.x = playerX;
                 shot.y = playerY - 1;
                 shot.dy = -1;
                 playerShots.push_back(shot);
+                --ammo;
+            }
+        } else if (action == InputAction::Reload) {
+            if (ammo < maxAmmo) {
+                feedbackText = "Reloading...";
+                feedbackFrames = 16;
+                feedbackPositive = true;
+                wrefresh(overlay);
+                napms(450);
+                ammo = maxAmmo;
+                feedbackText = "Reload complete.";
+                feedbackFrames = 18;
             }
         }
 

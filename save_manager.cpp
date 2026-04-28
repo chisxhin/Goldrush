@@ -19,6 +19,7 @@ namespace fs = std::filesystem;
 namespace {
 struct LoadedGameState {
     RuleSet rules;
+    GameSettings settings;
     std::vector<Player> players;
     std::vector<std::string> historyEntries;
     SerializedDeckState actionDeck;
@@ -38,6 +39,8 @@ struct LoadedGameState {
     std::string assignedFilename;
     std::time_t createdTime;
     std::time_t lastSavedTime;
+    bool sabotageUnlockAnnounced;
+    TutorialFlags tutorialFlags;
 };
 
 bool fillLocalTime(std::time_t timestamp, std::tm& out) {
@@ -434,6 +437,7 @@ void writePlayer(std::ofstream& out, const Player& player, int index) {
     out << "PLAYER\t" << index << "\tNAME\t" << escapeField(player.name) << "\n";
     out << "PLAYER\t" << index << "\tTYPE\t" << playerTypeLabel(player.type) << "\n";
     out << "PLAYER\t" << index << "\tCPU_DIFFICULTY\t" << cpuDifficultyLabel(player.cpuDifficulty) << "\n";
+    out << "PLAYER\t" << index << "\tTURNS_TAKEN\t" << player.turnsTaken << "\n";
     out << "PLAYER\t" << index << "\tTOKEN\t" << escapeField(std::string(1, player.token)) << "\n";
     out << "PLAYER\t" << index << "\tTILE\t" << player.tile << "\n";
     out << "PLAYER\t" << index << "\tCASH\t" << player.cash << "\n";
@@ -480,6 +484,135 @@ void writePlayer(std::ofstream& out, const Player& player, int index) {
     }
 }
 
+void writeTutorialFlag(std::ofstream& out, const std::string& name, bool value) {
+    out << "TUTORIAL\t" << name << "\t" << boolText(value) << "\n";
+}
+
+void writeTutorialFlags(std::ofstream& out, const TutorialFlags& flags) {
+    writeTutorialFlag(out, "AUTOMATIC_LOAN", flags.automaticLoan);
+    writeTutorialFlag(out, "MANUAL_LOAN", flags.manualLoan);
+    writeTutorialFlag(out, "INVESTMENT", flags.investment);
+    writeTutorialFlag(out, "BABY", flags.baby);
+    writeTutorialFlag(out, "PET", flags.pet);
+    writeTutorialFlag(out, "MARRIAGE", flags.marriage);
+    writeTutorialFlag(out, "INSURANCE", flags.insurance);
+    writeTutorialFlag(out, "SHIELD", flags.shield);
+    writeTutorialFlag(out, "ACTION_CARD", flags.actionCard);
+    writeTutorialFlag(out, "MINIGAME", flags.minigame);
+    writeTutorialFlag(out, "SABOTAGE", flags.sabotage);
+}
+
+void writeSetting(std::ofstream& out, const std::string& name, const std::string& value) {
+    out << "GAME_SETTINGS\t" << name << "\t" << escapeField(value) << "\n";
+}
+
+void writeSetting(std::ofstream& out, const std::string& name, int value) {
+    writeSetting(out, name, std::to_string(value));
+}
+
+void writeSetting(std::ofstream& out, const std::string& name, bool value) {
+    writeSetting(out, name, boolText(value));
+}
+
+void writeGameSettings(std::ofstream& out, const GameSettings& settings) {
+    writeSetting(out, "MODE_NAME", settings.modeName);
+    writeSetting(out, "CUSTOM_MODE", settings.customMode);
+    writeSetting(out, "MIN_JOB_SALARY", settings.minJobSalary);
+    writeSetting(out, "MAX_JOB_SALARY", settings.maxJobSalary);
+    writeSetting(out, "COLLEGE_COST", settings.collegeCost);
+    writeSetting(out, "STARTING_CASH", settings.startingCash);
+    writeSetting(out, "LOAN_AMOUNT", settings.loanAmount);
+    writeSetting(out, "LOAN_PENALTY", settings.loanPenalty);
+    writeSetting(out, "MAX_LOANS", settings.maxLoans);
+    writeSetting(out, "PAYDAY_MULTIPLIER_PERCENT", settings.paydayMultiplierPercent);
+    writeSetting(out, "TAX_MULTIPLIER_PERCENT", settings.taxMultiplierPercent);
+    writeSetting(out, "EVENT_REWARD_MULTIPLIER_PERCENT", settings.eventRewardMultiplierPercent);
+    writeSetting(out, "EVENT_PENALTY_MULTIPLIER_PERCENT", settings.eventPenaltyMultiplierPercent);
+    writeSetting(out, "INVESTMENT_MIN_RETURN_PERCENT", settings.investmentMinReturnPercent);
+    writeSetting(out, "INVESTMENT_MAX_RETURN_PERCENT", settings.investmentMaxReturnPercent);
+    writeSetting(out, "BABY_COST", settings.babyCost);
+    writeSetting(out, "PET_COST", settings.petCost);
+    writeSetting(out, "HOUSE_MIN_COST", settings.houseMinCost);
+    writeSetting(out, "HOUSE_MAX_COST", settings.houseMaxCost);
+    writeSetting(out, "MINIGAME_REWARD", settings.minigameReward);
+    writeSetting(out, "MINIGAME_PENALTY", settings.minigamePenalty);
+    writeSetting(out, "MINIGAME_DIFFICULTY_MODIFIER", settings.minigameDifficultyModifier);
+    writeSetting(out, "SABOTAGE_UNLOCK_TURN", settings.sabotageUnlockTurn);
+    writeSetting(out, "SABOTAGE_PENALTY_MULTIPLIER_PERCENT", settings.sabotagePenaltyMultiplierPercent);
+    writeSetting(out, "ALLOW_AUTOMATIC_LOANS", settings.allowAutomaticLoans);
+    writeSetting(out, "ALLOW_SABOTAGE", settings.allowSabotage);
+    writeSetting(out, "ALLOW_INVESTMENTS", settings.allowInvestments);
+    writeSetting(out, "ALLOW_PETS", settings.allowPets);
+    writeSetting(out, "ALLOW_RANDOM_EVENTS", settings.allowRandomEvents);
+}
+
+bool parseGameSetting(GameSettings& settings,
+                      const std::string& field,
+                      const std::string& value,
+                      std::string& error) {
+    if (field == "MODE_NAME") { settings.modeName = value; return true; }
+    if (field == "CUSTOM_MODE") return parseBool(value, settings.customMode);
+    if (field == "ALLOW_AUTOMATIC_LOANS") return parseBool(value, settings.allowAutomaticLoans);
+    if (field == "ALLOW_SABOTAGE") return parseBool(value, settings.allowSabotage);
+    if (field == "ALLOW_INVESTMENTS") return parseBool(value, settings.allowInvestments);
+    if (field == "ALLOW_PETS") return parseBool(value, settings.allowPets);
+    if (field == "ALLOW_RANDOM_EVENTS") return parseBool(value, settings.allowRandomEvents);
+
+    if (field == "MIN_JOB_SALARY") return parseInt(value, settings.minJobSalary);
+    if (field == "MAX_JOB_SALARY") return parseInt(value, settings.maxJobSalary);
+    if (field == "COLLEGE_COST") return parseInt(value, settings.collegeCost);
+    if (field == "STARTING_CASH") return parseInt(value, settings.startingCash);
+    if (field == "LOAN_AMOUNT") return parseInt(value, settings.loanAmount);
+    if (field == "LOAN_PENALTY") return parseInt(value, settings.loanPenalty);
+    if (field == "MAX_LOANS") return parseInt(value, settings.maxLoans);
+    if (field == "PAYDAY_MULTIPLIER_PERCENT") return parseInt(value, settings.paydayMultiplierPercent);
+    if (field == "TAX_MULTIPLIER_PERCENT") return parseInt(value, settings.taxMultiplierPercent);
+    if (field == "EVENT_REWARD_MULTIPLIER_PERCENT") return parseInt(value, settings.eventRewardMultiplierPercent);
+    if (field == "EVENT_PENALTY_MULTIPLIER_PERCENT") return parseInt(value, settings.eventPenaltyMultiplierPercent);
+    if (field == "INVESTMENT_MIN_RETURN_PERCENT") return parseInt(value, settings.investmentMinReturnPercent);
+    if (field == "INVESTMENT_MAX_RETURN_PERCENT") return parseInt(value, settings.investmentMaxReturnPercent);
+    if (field == "BABY_COST") return parseInt(value, settings.babyCost);
+    if (field == "PET_COST") return parseInt(value, settings.petCost);
+    if (field == "HOUSE_MIN_COST") return parseInt(value, settings.houseMinCost);
+    if (field == "HOUSE_MAX_COST") return parseInt(value, settings.houseMaxCost);
+    if (field == "MINIGAME_REWARD") return parseInt(value, settings.minigameReward);
+    if (field == "MINIGAME_PENALTY") return parseInt(value, settings.minigamePenalty);
+    if (field == "MINIGAME_DIFFICULTY_MODIFIER") return parseInt(value, settings.minigameDifficultyModifier);
+    if (field == "SABOTAGE_UNLOCK_TURN") return parseInt(value, settings.sabotageUnlockTurn);
+    if (field == "SABOTAGE_PENALTY_MULTIPLIER_PERCENT") return parseInt(value, settings.sabotagePenaltyMultiplierPercent);
+
+    error = "Unknown game setting: " + field;
+    return false;
+}
+
+bool parseTutorialFlag(TutorialFlags& flags,
+                       const std::string& name,
+                       const std::string& value,
+                       std::string& error) {
+    bool parsed = false;
+    if (!parseBool(value, parsed)) {
+        error = "Invalid tutorial flag value.";
+        return false;
+    }
+
+    if (name == "AUTOMATIC_LOAN") flags.automaticLoan = parsed;
+    else if (name == "MANUAL_LOAN") flags.manualLoan = parsed;
+    else if (name == "INVESTMENT") flags.investment = parsed;
+    else if (name == "BABY") flags.baby = parsed;
+    else if (name == "PET") flags.pet = parsed;
+    else if (name == "MARRIAGE") flags.marriage = parsed;
+    else if (name == "INSURANCE") flags.insurance = parsed;
+    else if (name == "SHIELD") flags.shield = parsed;
+    else if (name == "ACTION_CARD") flags.actionCard = parsed;
+    else if (name == "MINIGAME") flags.minigame = parsed;
+    else if (name == "SABOTAGE") flags.sabotage = parsed;
+    else {
+        error = "Unknown tutorial flag: " + name;
+        return false;
+    }
+    return true;
+}
+
 void writeRules(std::ofstream& out, const RuleSet& rules) {
     out << "RULES\tEDITION\t" << escapeField(rules.editionName) << "\n";
     out << "RULES\tTOGGLE\tPETS\t" << boolText(rules.toggles.petsEnabled) << "\n";
@@ -501,6 +634,8 @@ void writeRules(std::ofstream& out, const RuleSet& rules) {
     out << "RULES\tCOMPONENT\tSPIN_TO_WIN\t" << rules.components.spinToWinTokens << "\n";
     out << "RULES\tLOAN_UNIT\t" << rules.loanUnit << "\n";
     out << "RULES\tLOAN_REPAYMENT\t" << rules.loanRepaymentCost << "\n";
+    out << "RULES\tMAX_LOANS\t" << rules.maxLoans << "\n";
+    out << "RULES\tAUTOMATIC_LOANS\t" << boolText(rules.automaticLoansEnabled) << "\n";
     out << "RULES\tINVEST_PAYOUT\t" << rules.investmentMatchPayout << "\n";
     out << "RULES\tSPIN_PRIZE\t" << rules.spinToWinPrize << "\n";
 }
@@ -561,6 +696,7 @@ bool parsePlayerField(Player& player,
     if (field == "START_CHOICE") return parseInt(value, player.startChoice);
     if (field == "FAMILY_CHOICE") return parseInt(value, player.familyChoice);
     if (field == "RISK_CHOICE") return parseInt(value, player.riskChoice);
+    if (field == "TURNS_TAKEN") return parseInt(value, player.turnsTaken);
     if (field == "SABOTAGE_DEBT") return parseInt(value, player.sabotageDebt);
     if (field == "SHIELD_CARDS") return parseInt(value, player.shieldCards);
     if (field == "INSURANCE_USES") return parseInt(value, player.insuranceUses);
@@ -597,6 +733,8 @@ bool parseRuleField(RuleSet& rules,
     const std::string& category = parts[1];
     if (category == "LOAN_UNIT") return parseInt(parts[2], rules.loanUnit);
     if (category == "LOAN_REPAYMENT") return parseInt(parts[2], rules.loanRepaymentCost);
+    if (category == "MAX_LOANS") return parseInt(parts[2], rules.maxLoans);
+    if (category == "AUTOMATIC_LOANS") return parseBool(parts[2], rules.automaticLoansEnabled);
     if (category == "INVEST_PAYOUT") return parseInt(parts[2], rules.investmentMatchPayout);
     if (category == "SPIN_PRIZE") return parseInt(parts[2], rules.spinToWinPrize);
 
@@ -897,11 +1035,14 @@ bool SaveManager::saveGame(const Game& game,
     out << "GAME\tCURRENT_PLAYER\t" << game.currentPlayerIndex << "\n";
     out << "GAME\tTURN_COUNTER\t" << game.turnCounter << "\n";
     out << "GAME\tRETIRED_COUNT\t" << game.retiredCount << "\n";
+    out << "GAME\tSABOTAGE_UNLOCK_ANNOUNCED\t" << boolText(game.sabotageUnlockAnnounced) << "\n";
     out << "GAME\tRNG_FIXED\t" << boolText(game.rng.usesFixedSeed()) << "\n";
     out << "GAME\tRNG_SEED\t" << game.rng.seed() << "\n";
     out << "GAME\tRNG_STATE\t" << escapeField(game.rng.serializeState()) << "\n";
 
     writeRules(out, game.rules);
+    writeGameSettings(out, game.settings);
+    writeTutorialFlags(out, game.tutorialFlags);
 
     out << "PLAYERS\tCOUNT\t" << game.players.size() << "\n";
     for (std::size_t i = 0; i < game.players.size(); ++i) {
@@ -970,6 +1111,7 @@ bool SaveManager::loadGame(Game& game,
 
     LoadedGameState data;
     data.rules = makeNormalRules();
+    data.settings = createLifeModeSettings();
     data.rngFixedSeed = false;
     data.rngSeedValue = 0;
     data.currentPlayerIndex = 0;
@@ -979,6 +1121,8 @@ bool SaveManager::loadGame(Game& game,
     data.assignedFilename.clear();
     data.createdTime = 0;
     data.lastSavedTime = 0;
+    data.sabotageUnlockAnnounced = false;
+    data.tutorialFlags = TutorialFlags();
 
     std::time_t fileModifiedTime = std::time(0);
     std::error_code fileTimeError;
@@ -1048,6 +1192,11 @@ bool SaveManager::loadGame(Game& game,
                     error = "Invalid retired count.";
                     return false;
                 }
+            } else if (parts[1] == "SABOTAGE_UNLOCK_ANNOUNCED") {
+                if (!parseBool(parts[2], data.sabotageUnlockAnnounced)) {
+                    error = "Invalid sabotage unlock announcement flag.";
+                    return false;
+                }
             } else if (parts[1] == "RNG_FIXED") {
                 if (!parseBool(parts[2], data.rngFixedSeed)) {
                     error = "Invalid RNG fixed-seed flag.";
@@ -1072,6 +1221,28 @@ bool SaveManager::loadGame(Game& game,
                 if (error.empty()) {
                     error = "Invalid rules entry.";
                 }
+                return false;
+            }
+            continue;
+        }
+
+        if (parts[0] == "GAME_SETTINGS") {
+            if (parts.size() != 3) {
+                error = "Invalid game settings entry.";
+                return false;
+            }
+            if (!parseGameSetting(data.settings, parts[1], parts[2], error)) {
+                return false;
+            }
+            continue;
+        }
+
+        if (parts[0] == "TUTORIAL") {
+            if (parts.size() != 3) {
+                error = "Invalid tutorial flag entry.";
+                return false;
+            }
+            if (!parseTutorialFlag(data.tutorialFlags, parts[1], parts[2], error)) {
                 return false;
             }
             continue;
@@ -1217,7 +1388,10 @@ bool SaveManager::loadGame(Game& game,
         return false;
     }
 
+    validateGameSettings(data.settings);
+    game.settings = data.settings;
     game.rules = data.rules;
+    applyGameSettingsToRules(game.settings, game.rules);
     game.bank.configure(game.rules);
     game.players = data.players;
     game.currentPlayerIndex = data.currentPlayerIndex;
@@ -1227,6 +1401,8 @@ bool SaveManager::loadGame(Game& game,
     game.assignedSaveFilename = data.assignedFilename;
     game.createdTime = data.createdTime;
     game.lastSavedTime = data.lastSavedTime;
+    game.sabotageUnlockAnnounced = data.sabotageUnlockAnnounced;
+    game.tutorialFlags = data.tutorialFlags;
     game.activeTraps = data.activeTraps;
     game.decks.reset(game.rules, false);
     migrateLoadedDeckState(data, version);

@@ -23,6 +23,8 @@ RuleSet makeBaseRules(const std::string& name) {
     rules.components.spinToWinTokens = 5;
     rules.loanUnit = 50000;
     rules.loanRepaymentCost = 60000;
+    rules.maxLoans = 99;
+    rules.automaticLoansEnabled = true;
     rules.investmentMatchPayout = 25000;
     rules.spinToWinPrize = 25000;
     return rules;
