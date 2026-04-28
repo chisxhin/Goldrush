@@ -44,6 +44,7 @@ struct Player {
     int riskChoice = -1;
     PlayerType type = PlayerType::Human;
     CpuDifficulty cpuDifficulty = CpuDifficulty::Normal;
+    int turnsTaken = 0;
     int sabotageDebt = 0;
     int shieldCards = 0;
     int insuranceUses = 0;

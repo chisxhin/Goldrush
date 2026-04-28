@@ -4,9 +4,12 @@
 #include "battleship.hpp"
 #include "board.hpp"
 #include "cards.hpp"
+#include "completed_history.h"
 #include "cpu_player.hpp"
+#include "dice_art.h"
 #include "game.hpp"
 #include "hangman.hpp"
+#include "input_helpers.h"
 #include "memory.hpp"
 #include "minesweeper.hpp"
 #include "minigame_tutorials.h"
@@ -19,12 +22,15 @@
 #include "spins.hpp"
 #include "tile_display.h"
 #include "timer_display.h"
+#include "turn_summary.h"
+#include "tutorials.h"
 #include "ui.h"
 #include "ui_helpers.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <ctime>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -1113,6 +1119,442 @@ void debugSabotage() {
     }
 }
 
+void debugPreGameTutorial() {
+    initialize_game_ui();
+    showPreGameQuickGuide(has_colors());
+    destroy_game_ui();
+}
+
+void debugFirstTimeTutorialPopup() {
+    initialize_game_ui();
+    showFirstTimeTutorial(TutorialTopic::AutomaticLoan, has_colors());
+    destroy_game_ui();
+}
+
+void debugGuideScreen() {
+    initialize_game_ui();
+    Board board;
+    RuleSet rules = makeNormalRules();
+    showFullGuide(board, rules, false, has_colors());
+    destroy_game_ui();
+}
+
+void debugTitleQuitConfirmation() {
+    initialize_game_ui();
+    const bool confirmed = showQuitConfirmation(has_colors());
+    destroy_game_ui();
+    std::cout << "Quit confirmation result: " << (confirmed ? "confirmed" : "cancelled") << "\n";
+    pauseForEnter();
+}
+
+void debugEscCancelBehavior() {
+    std::cout << "\n===== ESC CANCEL DEBUG =====\n";
+    std::cout << "ESC maps to cancel: " << (isCancelKey(27) ? "yes" : "no") << "\n";
+    std::cout << "Q maps to cancel: " << (isCancelKey('Q') ? "yes" : "no") << "\n";
+    std::cout << "Single-player UP arrow action enum value: "
+              << static_cast<int>(getInputAction(KEY_UP, ControlScheme::SinglePlayer)) << "\n";
+    pauseForEnter();
+}
+
+void debugSabotageUnlockAnimation() {
+    initialize_game_ui();
+    showSabotageUnlockAnimation(has_colors());
+    destroy_game_ui();
+}
+
+void debugSabotageTutorial() {
+    initialize_game_ui();
+    showSabotageTutorial(has_colors());
+    destroy_game_ui();
+}
+
+void debugSabotageDiceResolution() {
+    RuleSet rules = makeNormalRules();
+    Bank bank(rules);
+    RandomService rng(4242);
+    SabotageManager manager(bank, rng);
+    Player attacker = makeDebugPlayer("Attacker", 0);
+    Player target = makeDebugPlayer("Target", 1);
+    SabotageResult result = manager.resolveLawsuit(attacker, target, 8, 4);
+    std::cout << "\n===== SABOTAGE DICE RESOLUTION DEBUG =====\n";
+    std::cout << result.summary << "\n";
+    printPlayerSummary(attacker, bank);
+    printPlayerSummary(target, bank);
+    pauseForEnter();
+}
+
+void debugSabotageDuelResolution() {
+    RuleSet rules = makeNormalRules();
+    Bank bank(rules);
+    RandomService rng(5252);
+    SabotageManager manager(bank, rng);
+    Player attacker = makeDebugPlayer("Attacker", 0);
+    Player target = makeDebugPlayer("Target", 1);
+    SabotageResult result = manager.resolveForcedDuel(attacker, target);
+    std::cout << "\n===== SABOTAGE DUEL RESOLUTION DEBUG =====\n";
+    std::cout << result.summary << "\n";
+    printPlayerSummary(attacker, bank);
+    printPlayerSummary(target, bank);
+    pauseForEnter();
+}
+
+void debugBattleshipControls() {
+    initialize_game_ui();
+    (void)playBattleshipMinigame("Debug Player", has_colors());
+    destroy_game_ui();
+}
+
+void debugBattleshipAmmoReload() {
+    debugBattleshipControls();
+}
+
+void debugCPUEndTurnWait() {
+    TurnSummary summary;
+    summary.playerName = "CPU 1";
+    summary.turnNumber = 6;
+    summary.moneyChange = 20000;
+    summary.cardsGained.push_back("Salary Boost");
+    summary.importantEvents.push_back("CPU 1 completed a clear automated turn.");
+    initialize_game_ui();
+    showTurnSummaryReport(summary, has_colors());
+    destroy_game_ui();
+}
+
+void debugCleanTurnSummary() {
+    TurnSummary summary;
+    summary.playerName = "Player 1";
+    summary.turnNumber = 6;
+    summary.moneyChange = 20000;
+    summary.loanChange = 1;
+    summary.babyChange = 1;
+    summary.gotMarried = true;
+    summary.jobChanged = true;
+    summary.oldJob = "Unemployed";
+    summary.newJob = "Engineer";
+    summary.sabotageEvents.push_back("Blocked a trap with a shield.");
+    initialize_game_ui();
+    showTurnSummaryReport(summary, has_colors());
+    destroy_game_ui();
+}
+
+void debugMemoryMatchSymbols() {
+    std::cout << "\n===== MEMORY MATCH SYMBOL DEBUG =====\n";
+    const std::vector<std::string> symbols = getMemoryMatchSymbols(false);
+    for (std::size_t i = 0; i < symbols.size(); ++i) {
+        std::cout << symbols[i] << (i + 1 == symbols.size() ? "\n" : " ");
+    }
+    pauseForEnter();
+}
+
+void debugMemoryMatchMemorizePopup() {
+    initialize_game_ui();
+    showPopupMessage("Memory Match Memorize Preview",
+                     std::vector<std::string>{
+                         "MEMORIZE NOW!",
+                         "Study the cards carefully.",
+                         "Cards will flip over soon.",
+                         "Time Remaining: 5",
+                         "The in-game Memory Match screen now draws this as a large side popup."
+                     },
+                     has_colors(),
+                     false);
+    destroy_game_ui();
+}
+
+void debugInputMapping() {
+    std::cout << "\n===== INPUT MAPPING DEBUG =====\n";
+    std::cout << "W single-player: " << static_cast<int>(getInputAction('w')) << "\n";
+    std::cout << "UP single-player: " << static_cast<int>(getInputAction(KEY_UP)) << "\n";
+    std::cout << "A duel-left: " << static_cast<int>(getInputAction('a', ControlScheme::DuelLeftPlayer)) << "\n";
+    std::cout << "LEFT duel-right: " << static_cast<int>(getInputAction(KEY_LEFT, ControlScheme::DuelRightPlayer)) << "\n";
+    std::cout << "ESC: " << static_cast<int>(getInputAction(27)) << "\n";
+    pauseForEnter();
+}
+
+void debugDiceRollAsciiArt() {
+    initialize_game_ui();
+    showPopupMessage("DEBUG PLAYER ROLLED",
+                     std::vector<std::string>{
+                         "Legacy large-number roll popup is active again.",
+                         "Spin result: 4"
+                     },
+                     has_colors(),
+                     false);
+    destroy_game_ui();
+}
+
+void debugEndGameScreen() {
+    initialize_game_ui();
+    showPopupMessage("Player 1 Wins!",
+                     std::vector<std::string>{
+                         "FINAL SCORE BREAKDOWN",
+                         "Cash: $250000",
+                         "Investments: $40000",
+                         "Home Value: $80000",
+                         "Loan Penalty: -$30000",
+                         "Final Score: $355000",
+                         "Press ENTER to return to the main menu."
+                     },
+                     has_colors(),
+                     false);
+    destroy_game_ui();
+}
+
+void debugCompletedGameHistory() {
+    CompletedGameEntry entry;
+    entry.date = "2026-04-28 00:00";
+    entry.gameId = "DEBUG_GAME";
+    entry.winner = "Debug Player";
+    entry.winnerScore = 355000;
+    entry.winnerCash = 250000;
+    entry.rounds = 42;
+    entry.players = "Debug Player:355000,CPU 1:280000";
+    entry.mode = "Debug";
+    std::string error;
+    appendCompletedGameHistory(entry, error);
+    initialize_game_ui();
+    showCompletedGameHistoryScreen(has_colors());
+    destroy_game_ui();
+}
+
+void debugStoryCpuText() {
+    std::cout << "\n===== STORY CPU TEXT DEBUG =====\n";
+    std::cout << "CPU 1 pauses for a moment, weighing quick money against a stronger future.\n";
+    std::cout << "CPU 1 chooses College.\n";
+    pauseForEnter();
+}
+
+void debugHangmanStages() {
+    std::cout << "\n===== HANGMAN STAGES DEBUG =====\n";
+    std::cout << "Hangman now uses exactly 8 wrong guesses and 9 visual states (0-8).\n";
+    std::cout << "Run the Hangman minigame from the minigame debug menu for the live view.\n";
+    pauseForEnter();
+}
+
+void debugHangmanBlinkInputStop() {
+    std::cout << "\n===== HANGMAN BLINK INPUT DEBUG =====\n";
+    std::cout << "Hangman feedback blinks twice, holds for 1 second, and ungets early input.\n";
+    std::cout << "This is verified during the live Hangman minigame.\n";
+    pauseForEnter();
+}
+
+void debugChoiceCards() {
+    initialize_game_ui();
+    choose_branch_with_selector("Choice Card Preview",
+                                std::vector<std::string>{
+                                    "- College: Cost high, future jobs stronger, debt risk",
+                                    "- Career: Cost low, income sooner, salary ceiling lower"
+                                },
+                                std::vector<int>{0, 1},
+                                0);
+    destroy_game_ui();
+}
+
+void debugPlaytestFixes() {
+    while (true) {
+        std::cout << "\n===== PLAYTEST FIXES DEBUG MENU =====\n"
+                  << "1. Test pre-game tutorial\n"
+                  << "2. Test first-time tutorial popup\n"
+                  << "3. Test Guide screen with legend\n"
+                  << "4. Test title quit confirmation\n"
+                  << "5. Test ESC cancel behavior\n"
+                  << "6. Test sabotage unlock animation\n"
+                  << "7. Test sabotage tutorial\n"
+                  << "8. Test sabotage dice roll resolution\n"
+                  << "9. Test sabotage duel resolution\n"
+                  << "10. Test Battleship controls\n"
+                  << "11. Test Battleship ammo and reload\n"
+                  << "12. Test CPU end-of-turn summary wait\n"
+                  << "13. Test clean stat-change turn summary\n"
+                  << "14. Test Memory Match ASCII symbols\n"
+                  << "15. Test Memory Match memorize countdown popup\n"
+                  << "16. Test WASD and arrow key input mapping\n"
+                  << "17. Test dice roll ASCII art\n"
+                  << "18. Test endgame winner screen\n"
+                  << "19. Test completed game history\n"
+                  << "20. Test story-style CPU decision text\n"
+                  << "21. Test Hangman 8-stage image\n"
+                  << "22. Test Hangman blink-stop-on-input\n"
+                  << "23. Test choice cards\n"
+                  << "24. Return\n";
+
+        const int choice = readMenuChoice(1, 24);
+        if (choice == 1) debugPreGameTutorial();
+        else if (choice == 2) debugFirstTimeTutorialPopup();
+        else if (choice == 3) debugGuideScreen();
+        else if (choice == 4) debugTitleQuitConfirmation();
+        else if (choice == 5) debugEscCancelBehavior();
+        else if (choice == 6) debugSabotageUnlockAnimation();
+        else if (choice == 7) debugSabotageTutorial();
+        else if (choice == 8) debugSabotageDiceResolution();
+        else if (choice == 9) debugSabotageDuelResolution();
+        else if (choice == 10) debugBattleshipControls();
+        else if (choice == 11) debugBattleshipAmmoReload();
+        else if (choice == 12) debugCPUEndTurnWait();
+        else if (choice == 13) debugCleanTurnSummary();
+        else if (choice == 14) debugMemoryMatchSymbols();
+        else if (choice == 15) debugMemoryMatchMemorizePopup();
+        else if (choice == 16) debugInputMapping();
+        else if (choice == 17) debugDiceRollAsciiArt();
+        else if (choice == 18) debugEndGameScreen();
+        else if (choice == 19) debugCompletedGameHistory();
+        else if (choice == 20) debugStoryCpuText();
+        else if (choice == 21) debugHangmanStages();
+        else if (choice == 22) debugHangmanBlinkInputStop();
+        else if (choice == 23) debugChoiceCards();
+        else return;
+    }
+}
+
+void printGameSettings(const GameSettings& settings) {
+    std::cout << gameSettingsSummary(settings) << "\n";
+    std::cout << "Mode type: " << (settings.customMode ? "Custom" : "Preset") << "\n";
+    std::cout << "Payday: " << settings.paydayMultiplierPercent
+              << "% | Events +/" << settings.eventRewardMultiplierPercent
+              << "% -/" << settings.eventPenaltyMultiplierPercent << "%\n";
+    std::cout << "Minigame reward unit: $" << settings.minigameReward
+              << " | Sabotage unlock turn: " << settings.sabotageUnlockTurn << "\n";
+    std::cout << "Automatic loans: " << (settings.allowAutomaticLoans ? "ON" : "OFF")
+              << " | Sabotage: " << (settings.allowSabotage ? "ON" : "OFF")
+              << " | Investments: " << (settings.allowInvestments ? "ON" : "OFF")
+              << " | Pets: " << (settings.allowPets ? "ON" : "OFF") << "\n";
+}
+
+void debugRelaxModeSettings() {
+    std::cout << "\n===== RELAX MODE SETTINGS DEBUG =====\n";
+    printGameSettings(createRelaxModeSettings());
+    pauseForEnter();
+}
+
+void debugLifeModeSettings() {
+    std::cout << "\n===== LIFE MODE SETTINGS DEBUG =====\n";
+    printGameSettings(createLifeModeSettings());
+    pauseForEnter();
+}
+
+void debugHellModeSettings() {
+    std::cout << "\n===== HELL MODE SETTINGS DEBUG =====\n";
+    printGameSettings(createHellModeSettings());
+    pauseForEnter();
+}
+
+void debugCustomModeMenu() {
+    initialize_game_ui();
+    GameSettings settings = createLifeModeSettings();
+    settings.customMode = true;
+    settings.modeName = "Custom Mode";
+    const bool started = showCustomSettingsMenu(settings, has_colors());
+    destroy_game_ui();
+    std::cout << "\nCustom menu result: " << (started ? "start selected" : "cancelled") << "\n";
+    printGameSettings(settings);
+    pauseForEnter();
+}
+
+void debugSalaryRangeCustomization() {
+    std::cout << "\n===== SALARY RANGE CUSTOMIZATION DEBUG =====\n";
+    GameSettings settings = createLifeModeSettings();
+    settings.minJobSalary = 30000;
+    settings.maxJobSalary = 45000;
+    const int sourceSalary = 120000;
+    validateGameSettings(settings);
+    const int adjusted = std::max(settings.minJobSalary, std::min(sourceSalary, settings.maxJobSalary));
+    std::cout << "Source salary: $" << sourceSalary << "\n";
+    std::cout << "Custom range: $" << settings.minJobSalary << "-$" << settings.maxJobSalary << "\n";
+    std::cout << "Adjusted gameplay salary: $" << adjusted << "\n";
+    pauseForEnter();
+}
+
+void debugCollegeCostIndependence() {
+    std::cout << "\n===== COLLEGE COST INDEPENDENCE DEBUG =====\n";
+    GameSettings settings = createLifeModeSettings();
+    const int originalCollegeCost = settings.collegeCost;
+    settings.minJobSalary = 10000;
+    settings.maxJobSalary = 30000;
+    validateGameSettings(settings);
+    std::cout << "Changed salary range to $" << settings.minJobSalary
+              << "-$" << settings.maxJobSalary << "\n";
+    std::cout << "College cost stayed at $" << settings.collegeCost << "\n";
+    std::cout << (settings.collegeCost == originalCollegeCost ? "PASS" : "FAIL") << "\n";
+    pauseForEnter();
+}
+
+void debugTerminalResizeRecovery() {
+    std::cout << "\n===== TERMINAL RESIZE RECOVERY DEBUG =====\n";
+    std::cout << "Required size: " << minimumGameWidth() << " x " << minimumGameHeight() << "\n";
+    std::cout << "In game, KEY_RESIZE now destroys old windows, recreates layout, and redraws current state.\n";
+    pauseForEnter();
+}
+
+void debugGameSettingsSaveLoad() {
+    std::cout << "\n===== GAME SETTINGS SAVE/LOAD DEBUG =====\n";
+    Game game;
+    SaveManager saveManager;
+    std::string error;
+    const std::string filename = "debug_settings_test.sav";
+    if (!saveManager.saveGame(game, filename, error)) {
+        std::cout << "Save failed: " << error << "\n";
+        pauseForEnter();
+        return;
+    }
+
+    const std::string path = saveManager.resolvePath(filename);
+    std::ifstream in(path.c_str());
+    std::string line;
+    bool sawSettings = false;
+    while (std::getline(in, line)) {
+        if (line.find("GAME_SETTINGS") == 0) {
+            sawSettings = true;
+            break;
+        }
+    }
+
+    std::cout << "Settings record written: " << (sawSettings ? "yes" : "no") << "\n";
+    std::cout << "Save path: " << path << "\n";
+    std::cout << "Load path uses the same GAME_SETTINGS records in SaveManager::loadGame.\n";
+    pauseForEnter();
+}
+
+void debugRevertedDiceAnimation() {
+    initialize_game_ui();
+    showPopupMessage("YOU ROLLED",
+                     std::vector<std::string>{
+                         "Legacy large-number roll popup is active again.",
+                         "The main game no longer uses the newer dice-face animation.",
+                         "Spin result: 4"
+                     },
+                     has_colors(),
+                     false);
+    destroy_game_ui();
+}
+
+void debugGameSettingsMenu() {
+    while (true) {
+        std::cout << "\n===== GAME SETTINGS DEBUG MENU =====\n"
+                  << "1. Test Relax Mode settings\n"
+                  << "2. Test Life Mode settings\n"
+                  << "3. Test Hell Mode settings\n"
+                  << "4. Test Custom Mode menu\n"
+                  << "5. Test salary range customization\n"
+                  << "6. Test college cost stays independent\n"
+                  << "7. Test terminal resize recovery\n"
+                  << "8. Test game settings save/load\n"
+                  << "9. Test reverted dice animation\n"
+                  << "10. Return\n";
+
+        const int choice = readMenuChoice(1, 10);
+        if (choice == 1) debugRelaxModeSettings();
+        else if (choice == 2) debugLifeModeSettings();
+        else if (choice == 3) debugHellModeSettings();
+        else if (choice == 4) debugCustomModeMenu();
+        else if (choice == 5) debugSalaryRangeCustomization();
+        else if (choice == 6) debugCollegeCostIndependence();
+        else if (choice == 7) debugTerminalResizeRecovery();
+        else if (choice == 8) debugGameSettingsSaveLoad();
+        else if (choice == 9) debugRevertedDiceAnimation();
+        else return;
+    }
+}
+
 void runDebugMenu() {
     while (true) {
         std::cout << "\n===== DEBUG MENU =====\n"
@@ -1126,9 +1568,11 @@ void runDebugMenu() {
                   << "8. Test sabotage features\n"
                   << "9. Test UI / pacing features\n"
                   << "10. Test board UI features\n"
-                  << "11. Exit\n";
+                  << "11. Test playtest fixes\n"
+                  << "12. Test game settings\n"
+                  << "13. Exit\n";
 
-        const int choice = readMenuChoice(1, 11);
+        const int choice = readMenuChoice(1, 13);
         switch (choice) {
             case 1:
                 debugDiceRoll();
@@ -1161,6 +1605,12 @@ void runDebugMenu() {
                 debugBoardUi();
                 break;
             case 11:
+                debugPlaytestFixes();
+                break;
+            case 12:
+                debugGameSettingsMenu();
+                break;
+            case 13:
                 std::cout << "Exiting debug menu.\n";
                 return;
             default:

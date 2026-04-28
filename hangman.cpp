@@ -1,4 +1,5 @@
 #include "hangman.hpp"
+#include "input_helpers.h"
 #include "minigame_tutorials.h"
 #include "ui.h"
 #include "ui_helpers.h"
@@ -11,6 +12,8 @@
 #include <vector>
 
 namespace {
+
+const int MAX_WRONG_GUESSES = 8;
 
 struct HangmanWord {
     std::string word;
@@ -156,7 +159,8 @@ const std::vector<std::string> HANGMAN_STAGES = {
     "\n  +---+\n  |   |\n  O   |\n /|\\  |\n      |\n      |\n=========",
     "\n  +---+\n  |   |\n  O   |\n /|\\  |\n /    |\n      |\n=========",
     "\n  +---+\n  |   |\n  O   |\n /|\\  |\n / \\  |\n      |\n=========",
-    "\n  +---+\n  |   |\n  O   |\n /|\\  |\n / \\  |\n      |\n========= GAME OVER!"
+    "\n  +---+\n  |   |\n  O   |\n /|\\  |\n / \\  |\n      |\n=========",
+    "\n  +---+\n  |   |\n  X   |\n /|\\  |\n / \\  |\n      |\n========= GAME OVER!"
 };
 
 HangmanWord getRandomWord() {
@@ -171,7 +175,7 @@ HangmanWord getRandomWord() {
 }
 
 void drawHangman(WINDOW* win, int y, int x, int wrong, bool hasColor) {
-    int stage = wrong > 7 ? 7 : wrong;
+    int stage = wrong > MAX_WRONG_GUESSES ? MAX_WRONG_GUESSES : wrong;
     std::string art = HANGMAN_STAGES[stage];
     
     if (hasColor) {
@@ -249,6 +253,51 @@ void drawAsciiTitle(WINDOW* win, int screenW, bool hasColor) {
     }
 }
 
+bool blinkHangmanIndicatorUntilInput(WINDOW* win,
+                                     int y,
+                                     int x,
+                                     const std::string& text,
+                                     bool hasColor,
+                                     int colorPair,
+                                     int blinkCount = 2,
+                                     int finalHoldMs = 1000) {
+    const int width = static_cast<int>(text.size());
+    nodelay(win, TRUE);
+    auto pollDelay = [&](int totalMs) -> bool {
+        const int stepMs = 40;
+        for (int elapsed = 0; elapsed < totalMs; elapsed += stepMs) {
+            const int ch = wgetch(win);
+            if (ch != ERR) {
+                ungetch(ch);
+                nodelay(win, FALSE);
+                return true;
+            }
+            napms(stepMs);
+        }
+        return false;
+    };
+
+    for (int i = 0; i < blinkCount; ++i) {
+        mvwprintw(win, y, x, "%*s", width, "");
+        wrefresh(win);
+        if (pollDelay(140)) return true;
+
+        if (hasColor) wattron(win, COLOR_PAIR(colorPair) | A_BOLD);
+        mvwprintw(win, y, x, "%s", text.c_str());
+        if (hasColor) wattroff(win, COLOR_PAIR(colorPair) | A_BOLD);
+        wrefresh(win);
+        if (pollDelay(180)) return true;
+    }
+
+    if (hasColor) wattron(win, COLOR_PAIR(colorPair) | A_BOLD);
+    mvwprintw(win, y, x, "%s", text.c_str());
+    if (hasColor) wattroff(win, COLOR_PAIR(colorPair) | A_BOLD);
+    wrefresh(win);
+    const bool interrupted = pollDelay(finalHoldMs);
+    nodelay(win, FALSE);
+    return interrupted;
+}
+
 void flashFeedback(WINDOW* win,
                    int y,
                    int arenaLeft,
@@ -259,7 +308,7 @@ void flashFeedback(WINDOW* win,
     const int textX = arenaLeft + (arenaWidth - static_cast<int>(text.size())) / 2;
     const int colorPair = positive ? GOLDRUSH_BLACK_FOREST : GOLDRUSH_GOLD_TERRA;
 
-    blinkIndicator(win, y, textX, text, hasColor, colorPair, 2, 2000, static_cast<int>(text.size()));
+    blinkHangmanIndicatorUntilInput(win, y, textX, text, hasColor, colorPair, 2, 1000);
 }
 
 } // anonymous namespace
@@ -267,14 +316,14 @@ void flashFeedback(WINDOW* win,
 HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) {
     HangmanResult res;
     res.won = false;
-    res.attemptsLeft = 8;
+    res.attemptsLeft = MAX_WRONG_GUESSES;
     res.lettersGuessed = 0;
     res.abandoned = false;
 
     showMinigameTutorial("Hangman",
                          "Guess the hidden word one letter at a time.",
                          "Type A-Z to guess, ESC exits.",
-                         "Reveal the full word before 10 wrong guesses.",
+                         "Reveal the full word before 8 wrong guesses.",
                          "Each revealed letter slot pays $100. Exiting early pays nothing.",
                          hasColor);
 
@@ -312,8 +361,10 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
             wattron(win, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
         }
         const std::string statusLine =
-            "Player: " + playerName + "  |  Wrong guesses: " + std::to_string(wrong) +
-            "/10  |  Current payout: $" + std::to_string(res.lettersGuessed * 100);
+            "Player: " + playerName + "  |  Wrong guesses left: " +
+            std::to_string(std::max(0, MAX_WRONG_GUESSES - wrong)) + " / " +
+            std::to_string(MAX_WRONG_GUESSES) + "  |  Current payout: $" +
+            std::to_string(res.lettersGuessed * 100);
         mvwprintw(win, 8, (w - static_cast<int>(statusLine.size())) / 2, "%s", statusLine.c_str());
         if (hasColor) {
             wattroff(win, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
@@ -354,14 +405,14 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
         mvwprintw(win, arenaBottom - 3, arenaLeft + 3,
                   "Guess letters A-Z. Category is shown and the hint appears after 5 misses.");
         mvwprintw(win, arenaBottom - 2, arenaLeft + 3,
-                  "Each revealed letter slot is worth $100. One finished hangman ends the game.");
+            "Each revealed letter slot is worth $100. One finished hangman ends the game.");
         if (hasColor) {
             wattroff(win, COLOR_PAIR(GOLDRUSH_BLACK_CREAM));
         }
 
         if (disp == word) {
             res.won = true;
-            res.attemptsLeft = 10 - wrong;
+            res.attemptsLeft = std::max(0, MAX_WRONG_GUESSES - wrong);
 
             werase(win);
             if (hasColor) {
@@ -412,7 +463,7 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
             break;
         }
 
-        if (wrong >= 10) {
+        if (wrong >= MAX_WRONG_GUESSES) {
             res.won = false;
             res.attemptsLeft = 0;
 
@@ -469,7 +520,7 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
 
         int ch = wgetch(win);
 
-        if (ch == 27 || ch == 'q' || ch == 'Q') {
+        if (isCancelKey(ch)) {
             res.abandoned = true;
             break;
         }
@@ -511,7 +562,8 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
                               arenaBottom - 1,
                               arenaLeft,
                               arenaWidth,
-                              "MISS! Attempts left: " + std::to_string(10 - wrong),
+                              "MISS! Attempts left: " +
+                                  std::to_string(std::max(0, MAX_WRONG_GUESSES - wrong)),
                               false,
                               hasColor);
             } else {

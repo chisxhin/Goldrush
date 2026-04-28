@@ -97,6 +97,62 @@ std::string historyCategory(const std::string& eventText) {
     return "INFO";
 }
 
+std::string trimChoicePrefix(const std::string& text) {
+    std::string out = text;
+    while (!out.empty() && (out[0] == '-' || std::isspace(static_cast<unsigned char>(out[0])))) {
+        out.erase(out.begin());
+    }
+    return out;
+}
+
+void drawChoiceCard(int y,
+                    int x,
+                    int width,
+                    int height,
+                    const std::string& optionText,
+                    bool highlighted) {
+    const std::string clean = trimChoicePrefix(optionText);
+    const std::string::size_type colon = clean.find(':');
+    const std::string title = colon == std::string::npos ? clean : clean.substr(0, colon);
+    const std::string detail = colon == std::string::npos ? "" : clean.substr(colon + 1);
+
+    if (highlighted) {
+        attron(A_REVERSE | A_BOLD);
+    } else {
+        attron(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
+    }
+    mvaddch(y, x, ACS_ULCORNER);
+    mvhline(y, x + 1, ACS_HLINE, width - 2);
+    mvaddch(y, x + width - 1, ACS_URCORNER);
+    for (int row = 1; row < height - 1; ++row) {
+        mvaddch(y + row, x, ACS_VLINE);
+        mvprintw(y + row, x + 1, "%*s", width - 2, "");
+        mvaddch(y + row, x + width - 1, ACS_VLINE);
+    }
+    mvaddch(y + height - 1, x, ACS_LLCORNER);
+    mvhline(y + height - 1, x + 1, ACS_HLINE, width - 2);
+    mvaddch(y + height - 1, x + width - 1, ACS_LRCORNER);
+    if (highlighted) {
+        attroff(A_REVERSE | A_BOLD);
+    } else {
+        attroff(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
+    }
+
+    attron(A_BOLD);
+    mvprintw(y + 1, x + 2, "%-*s", width - 4,
+             clipUiText(title, static_cast<std::size_t>(width - 4)).c_str());
+    attroff(A_BOLD);
+    mvhline(y + 2, x + 2, ACS_HLINE, width - 4);
+
+    const std::vector<std::string> detailLines =
+        wrapUiText(detail.empty() ? clean : detail, static_cast<std::size_t>(width - 4));
+    for (int i = 0; i < height - 5 && i < static_cast<int>(detailLines.size()); ++i) {
+        mvprintw(y + 4 + i, x + 2, "%-*s", width - 4,
+                 clipUiText(detailLines[static_cast<std::size_t>(i)],
+                            static_cast<std::size_t>(width - 4)).c_str());
+    }
+}
+
 int previewNextTile(const Board& board, const Player& player, int tileIndex) {
     const Tile& current = board.tileAt(tileIndex);
     if (current.kind == TILE_SPLIT_START) {
@@ -264,7 +320,7 @@ void draw_title_banner_ui(WINDOW* titleWin) {
         const int titleX = std::max(2, (width - static_cast<int>(title.size())) / 2);
         mvwprintw(titleWin, std::min(1, height - 2), titleX, "%s", title.c_str());
         if (height >= 4) {
-            const std::string subtitle = "Retire with the highest net worth";
+            const std::string subtitle = "Goal: Retire with the highest net worth";
             mvwprintw(titleWin,
                       2,
                       std::max(2, (width - static_cast<int>(subtitle.size())) / 2),
@@ -278,6 +334,12 @@ void draw_title_banner_ui(WINDOW* titleWin) {
         mvwprintw(titleWin, 4, 2, "\\    \\_\\  (  <_> )  |__/ /_/ | |  | \\/  |  /\\___ \\|   Y  \\");
         mvwprintw(titleWin, 5, 2, " \\______  /\\____/|____/\\____ | |__|  |____//____  >___|  /");
         mvwprintw(titleWin, 6, 2, "        \\/                  \\/                  \\/     \\/ ");
+        const std::string goal = "Goal: Retire with the highest net worth";
+        mvwprintw(titleWin,
+                  7,
+                  std::max(2, (width - static_cast<int>(goal.size())) / 2),
+                  "%s",
+                  goal.c_str());
     }
     wattroff(titleWin, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
     wrefresh(titleWin);
@@ -561,19 +623,14 @@ void draw_sidebar_ui(WINDOW* panelWin,
                      int currentPlayer,
                      const std::vector<std::string>& historyLines,
                      const RuleSet& rules) {
+    (void)rules;
     int panelHeight = 0;
     int panelWidth = 0;
     getmaxyx(panelWin, panelHeight, panelWidth);
     const bool compact = panelHeight < 31 || panelWidth < 42;
-    const int hintHeight = compact ? 3 : 4;
-    const int hintY = compact ? 19 : 19;
-    const int legendHeaderY = compact ? 22 : 23;
-    const int legendY = compact ? 23 : 24;
-    const int historyHeaderY = compact ? 25 : 26;
-    const int historyStartY = compact ? 26 : 27;
-    const int historyMaxLines = compact ? 2 : 3;
-    const int legendWidth = std::max(20, panelWidth - 4);
-    const int hintWidth = std::max(20, panelWidth - 2);
+    const int historyHeaderY = compact ? 21 : 23;
+    const int historyStartY = compact ? 22 : 24;
+    const int historyMaxLines = compact ? 5 : 5;
     const int historyWidth = std::max(12, panelWidth - 5);
 
     werase(panelWin);
@@ -581,18 +638,7 @@ void draw_sidebar_ui(WINDOW* panelWin,
 
     if (!players.empty() && currentPlayer >= 0 && currentPlayer < static_cast<int>(players.size())) {
         drawPlayerPanel(panelWin, board, players, currentPlayer);
-
-        WINDOW* hintWin = derwin(panelWin, hintHeight, hintWidth, hintY, 1);
-        apply_ui_background(hintWin);
-        drawCurrentHintBox(hintWin, board, players[static_cast<std::size_t>(currentPlayer)], rules);
-        delwin(hintWin);
     }
-
-    drawPanelHeader(panelWin, legendHeaderY, "LEGEND");
-    WINDOW* legendWin = derwin(panelWin, 2, legendWidth, legendY, 2);
-    apply_ui_background(legendWin);
-    drawBoardLegend(legendWin);
-    delwin(legendWin);
 
     drawPanelHeader(panelWin, historyHeaderY, "HISTORY");
     for (std::size_t i = 0; i < historyLines.size() && i < static_cast<std::size_t>(historyMaxLines); ++i) {
@@ -633,6 +679,42 @@ int selector_component(char* prompt_text,
         if (option_values[i] == default_value) {
             highlighted_option = i;
             break;
+        }
+    }
+
+    if (number_of_options == 2) {
+        const int cardW = 34;
+        const int cardH = 10;
+        const int gap = 4;
+        const int popupW = (cardW * 2) + gap;
+        const int popupH = cardH + 5;
+        const int popupX = std::max(0, (termWidth - popupW) / 2);
+        const int popupY = std::max(1, (termHeight - popupH) / 2);
+
+        while (true) {
+            attron(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
+            mvprintw(popupY, popupX, "%-*s", popupW,
+                     clipUiText(prompt_text, static_cast<std::size_t>(popupW)).c_str());
+            attroff(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
+
+            drawChoiceCard(popupY + 2, popupX, cardW, cardH, option_texts[0], highlighted_option == 0);
+            drawChoiceCard(popupY + 2, popupX + cardW + gap, cardW, cardH, option_texts[1], highlighted_option == 1);
+
+            mvprintw(popupY + popupH - 2, popupX, "%-*s", popupW,
+                     "Use LEFT/RIGHT or A/D to choose. Press ENTER to confirm.");
+            refresh();
+
+            const int input_character = getch();
+            if (input_character == KEY_LEFT || input_character == KEY_RIGHT ||
+                input_character == 'a' || input_character == 'A' ||
+                input_character == 'd' || input_character == 'D' ||
+                input_character == KEY_UP || input_character == KEY_DOWN ||
+                input_character == 'w' || input_character == 'W' ||
+                input_character == 's' || input_character == 'S') {
+                highlighted_option = highlighted_option == 0 ? 1 : 0;
+            } else if (input_character == '\n' || input_character == '\r' || input_character == KEY_ENTER) {
+                return option_values[highlighted_option];
+            }
         }
     }
 

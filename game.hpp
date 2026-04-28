@@ -10,11 +10,13 @@
 #include "board.hpp"
 #include "cards.hpp"
 #include "cpu_player.hpp"
+#include "game_settings.h"
 #include "history.hpp"
 #include "player.hpp"
 #include "random_service.hpp"
 #include "rules.hpp"
 #include "sabotage.h"
+#include "tutorials.h"
 
 class SaveManager;
 struct SaveFileInfo;
@@ -36,20 +38,21 @@ private:
         START_QUIT_GAME
     };
 
-    static const int MIN_W = 116;
-    static const int MIN_H = 38;
-    static const int TITLE_W = 116;
-    static const int TITLE_H = 4;
+    static const int MIN_W = 124;
+    static const int MIN_H = 45;
+    static const int TITLE_W = 124;
+    static const int TITLE_H = 9;
     static const int BOARD_W = 82;
     static const int BOARD_H = 29;
     static const int INFO_W = 34;
     static const int INFO_H = 29;
-    static const int MSG_W = 116;
+    static const int MSG_W = 124;
     static const int MSG_H = 5;
 
     Board board;
     std::vector<Player> players;
     RuleSet rules;
+    GameSettings settings;
     RandomService rng;
     CpuController cpu;
     DeckManager decks;
@@ -69,9 +72,13 @@ private:
     std::time_t createdTime;
     std::time_t lastSavedTime;
     bool autoAdvanceUi;
+    bool sabotageUnlockAnnounced;
+    TutorialFlags tutorialFlags;
     std::vector<ActiveTrap> activeTraps;
 
+    bool isTerminalSizeValid() const;
     bool ensureMinSize() const;
+    bool recoverTerminalLayout(int currentPlayer, const std::string& msg, const std::string& detail);
     void createWindows();
     void destroyWindows();
     void waitForEnter(WINDOW* w, int y, int x, const std::string& text) const;
@@ -90,6 +97,11 @@ private:
     StartChoice showStartScreen();
     bool configureCustomRules();
     void showTutorial();
+    void showGuidePopup() const;
+    void resetTutorialFlags();
+    void maybeShowFirstTimeTutorial(TutorialTopic topic);
+    bool isSabotageUnlockedForPlayer(int playerIndex) const;
+    void maybeShowSabotageUnlock(int playerIndex);
     void showControlsPopup() const;
     void showScoreboardPopup() const;
     void showTileGuidePopup() const;
@@ -97,6 +109,9 @@ private:
     bool isCpuPlayer(int playerIndex) const;
     void showCpuThinking(int playerIndex, const std::string& action) const;
     int effectiveSalary(const Player& player) const;
+    int adjustedSalary(int salary) const;
+    int rewardAmount(int amount) const;
+    int penaltyAmount(int amount) const;
     void decrementTurnStatuses(Player& player);
     bool resolveSkipTurn(int playerIndex);
     void maybeCpuSabotage(int playerIndex);
@@ -121,6 +136,14 @@ private:
                               int endTile,
                               int startingCash,
                               int startingLoans,
+                              int startingKids,
+                              int startingPets,
+                              int startingActionCards,
+                              int startingShields,
+                              int startingInsurance,
+                              bool startingMarried,
+                              const std::string& startingJob,
+                              const std::string& startingHouse,
                               const std::string& reason) const;
     int showBranchPopup(const std::string& title,
                         const std::vector<std::string>& lines,

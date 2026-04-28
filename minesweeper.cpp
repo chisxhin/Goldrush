@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "input_helpers.h"
 #include "minigame_tutorials.h"
 #include "timer_display.h"
 #include "ui.h"
@@ -441,27 +442,28 @@ MinesweeperResult playMinesweeperMinigame(const std::string& playerName, bool ha
             continue;
         }
 
-        if (ch == 27 || ch == 'q' || ch == 'Q') {
+        const InputAction action = getInputAction(ch, ControlScheme::SinglePlayer);
+        if (action == InputAction::Cancel) {
             result.abandoned = true;
             break;
         }
 
         if (gameOver) {
-            if (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == ' ') {
+            if (action == InputAction::Confirm || action == InputAction::Fire) {
                 break;
             }
             continue;
         }
 
-        if (ch == 'w' || ch == 'W') {
+        if (action == InputAction::Up) {
             currentRow = clampInt(currentRow - 1, 0, GRID_ROWS - 1);
-        } else if (ch == 's' || ch == 'S') {
+        } else if (action == InputAction::Down) {
             currentRow = clampInt(currentRow + 1, 0, GRID_ROWS - 1);
-        } else if (ch == 'a' || ch == 'A') {
+        } else if (action == InputAction::Left) {
             currentCol = clampInt(currentCol - 1, 0, GRID_COLS - 1);
-        } else if (ch == 'd' || ch == 'D') {
+        } else if (action == InputAction::Right) {
             currentCol = clampInt(currentCol + 1, 0, GRID_COLS - 1);
-        } else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == ' ') {
+        } else if (action == InputAction::Confirm || action == InputAction::Fire) {
             const int idx = indexFor(currentRow, currentCol);
             if (grid[static_cast<std::size_t>(idx)].revealed) {
                 continue;

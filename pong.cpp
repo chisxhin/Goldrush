@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "input_helpers.h"
 #include "minigame_tutorials.h"
 #include "ui.h"
 #include "ui_helpers.h"
@@ -120,7 +121,7 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
 
     showMinigameTutorial("Pong",
                          "Return the ball with your paddle for as long as possible.",
-                         "W moves up, S moves down, X serves, ESC exits.",
+                         "W/S or arrows move, X serves, ESC exits.",
                          "Keep returning the ball. One miss ends the run.",
                          "Each successful return pays $100. Exiting early pays nothing.",
                          hasColor);
@@ -228,7 +229,7 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
             wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
         }
 
-        mvwprintw(overlay, arenaBottom + 2, arenaLeft, "UP: W  DOWN: S  START: X");
+        mvwprintw(overlay, arenaBottom + 2, arenaLeft, "UP/DOWN: W/S or arrows  START: X");
         mvwprintw(overlay, arenaBottom + 2, arenaRight - 20, "RIGHT SIDE: CPU");
 
         if (waitingForServe) {
@@ -246,13 +247,14 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
         wrefresh(overlay);
 
         int ch = wgetch(overlay);
-        if (ch == 27 || ch == 'q' || ch == 'Q') {
+        const InputAction action = getInputAction(ch, ControlScheme::SinglePlayer);
+        if (action == InputAction::Cancel) {
             result.abandoned = true;
             break;
         }
 
         if (waitingForServe) {
-            if (ch == 'x' || ch == 'X') {
+            if (action == InputAction::Start) {
                 waitingForServe = false;
             } else {
                 napms(16);
@@ -268,9 +270,9 @@ PongMinigameResult playPongMinigame(const std::string& playerName, bool hasColor
             continue;
         }
 
-        if (ch == 'w' || ch == 'W') {
+        if (action == InputAction::Up) {
             playerPaddle.centerY -= 1.2f;
-        } else if (ch == 's' || ch == 'S') {
+        } else if (action == InputAction::Down) {
             playerPaddle.centerY += 1.2f;
         }
 
@@ -473,13 +475,15 @@ PongDuelResult playPongDuelMinigame(const std::string& leftPlayerName,
         wrefresh(overlay);
 
         int ch = wgetch(overlay);
-        if (ch == 27 || ch == 'q' || ch == 'Q') {
+        const InputAction leftAction = getInputAction(ch, ControlScheme::DuelLeftPlayer);
+        const InputAction rightAction = getInputAction(ch, ControlScheme::DuelRightPlayer);
+        if (leftAction == InputAction::Cancel) {
             result.abandoned = true;
             break;
         }
 
         if (waitingForServe) {
-            if (ch == 'x' || ch == 'X') {
+            if (leftAction == InputAction::Start) {
                 waitingForServe = false;
             } else {
                 napms(16);
@@ -495,15 +499,15 @@ PongDuelResult playPongDuelMinigame(const std::string& leftPlayerName,
             continue;
         }
 
-        if (ch == 'w' || ch == 'W') {
+        if (leftAction == InputAction::Up) {
             leftPaddle.centerY -= 1.2f;
-        } else if (ch == 's' || ch == 'S') {
+        } else if (leftAction == InputAction::Down) {
             leftPaddle.centerY += 1.2f;
         }
         if (!rightSideCpu) {
-            if (ch == KEY_UP) {
+            if (rightAction == InputAction::Up) {
                 rightPaddle.centerY -= 1.2f;
-            } else if (ch == KEY_DOWN) {
+            } else if (rightAction == InputAction::Down) {
                 rightPaddle.centerY += 1.2f;
             }
         }
