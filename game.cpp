@@ -89,28 +89,79 @@ std::string turnPromptText() {
     return "ENTER begin turn | B sabotage | TAB scores+map | G guide | K keys | S save | ESC menu";
 }
 
+//shiny number
 std::vector<std::string> bigRollNumberArt(int value) {
     switch (value) {
         case 1:
-            return {"   __  ", "  /_ | ", "   | | ", "   | | ", "   |_| "};
+            return {"   __  ", 
+                    "  /_ | ", 
+                    "   | | ", 
+                    "   | | ",
+                    "   | | ",
+                    "   |_| "};
         case 2:
-            return {"  ___  ", " |__ \\ ", "    ) |", "   / / ", "  /_/  "};
+            return {"  ___  ", 
+                    " |__ \\  ", 
+                    "    ) |  ", 
+                    "   / /   ",
+                    "  / /___ ",
+                    " /_____// "};
         case 3:
-            return {"  ____  ", " |___ \\ ", "   __) |", "  |__ < ", "  ___) |"};
+            return {"  ____  ", 
+                    " |___ \\", 
+                    "   __) |", 
+                    "  |__ < ", 
+                    "  ___) |",
+                    " |____/ "};
         case 4:
-            return {"  _  _   ", " | || |  ", " | || |_ ", " |__   _|", "    |_|  "};
+            return {"  _  _   ", 
+                    " | || |  ", 
+                    " | || |_ ", 
+                    " |__   _|", 
+                    "    | |  ",
+                    "    |_|   "};
         case 5:
-            return {"  _____ ", " | ____|", " | |__  ", " |___ \\ ", "  ___) |"};
+            return {"  _____ ", 
+                    " | ____|", 
+                    " | |__  ", 
+                    " |___ \\", 
+                    "  ___) |",
+                    " |____/ "};
         case 6:
-            return {"   __   ", "  / /   ", " / /_   ", "| '_ \\  ", "| (_) | "};
+            return {"   __   ", 
+                    "  / /   ", 
+                    " / /_   ", 
+                    "| '_ \\ ", 
+                    "| (_) | ",
+                    "\\___/  "};
         case 7:
-            return {"  ______ ", " |____  |", "     / / ", "    / /  ", "   /_/   "};
+            return {"  ______ ", 
+                    " |____  |", 
+                    "     / / ", 
+                    "    / /  ", 
+                    "   / /   ",
+                    "  /_/"};
         case 8:
-            return {"   ___   ", "  / _ \\  ", " | (_) | ", "  > _ <  ", " | (_) | "};
+            return {"   ___   ", 
+                    "  / _ \\  ", 
+                    " | (_) | ", 
+                    "  > _ <  ", 
+                    " | (_) | ",
+                    " \\___/  "};
         case 9:
-            return {"   ___   ", "  / _ \\  ", " | (_) | ", "  \\__, | ", "    /_/  "};
+            return {"   ___   ", 
+                    "  / _ \\  ", 
+                    " | (_) | ", 
+                    " \\__, | ", 
+                    "    / /  ",
+                    "   /_/   "};
         case 10:
-            return {"  _   ___   ", " / | / _ \\  ", " | || | | | ", " | || |_| | ", " |_| \\___/  "};
+            return {"  _   ___   ", 
+                    "/_ | / _ \\  ", 
+                    " | || | | | ", 
+                    " | || | | | ", 
+                    " | || |_| |",
+                    " |_|\\___/"};
         default:
             return {std::to_string(value)};
     }
@@ -271,7 +322,7 @@ bool Game::ensureMinSize() const {
             bkgd(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
         }
         clear();
-        const char* line1 = "Terminal too small - please resize"; //change to please fullscreen
+        const char* line1 = "Please enter full-screen mode"; 
         std::ostringstream line2;
         line2 << "Minimum size: " << minWidth << "x" << minHeight;
         std::ostringstream line3;
@@ -365,12 +416,12 @@ void Game::drawSetupTitle() const {
     }
 
     const char* lines[] = {
-        "  ________       .__       .___                   .__     ",
-        " /  _____/  ____ |  |    __| _/______ __ __  _____|  |__  ",
-        "/   \\  ___ /  _ \\|  |   / __ |\\_  __ \\  |  \\/  ___/  |  \\ ",
-        "\\    \\_\\  (  <_> )  |__/ /_/ | |  | \\/  |  /\\___ \\|   Y  \\",
-        " \\______  /\\____/|____/\\____ | |__|  |____//____  >___|  /",
-        "        \\/                  \\/                  \\/     \\/ "
+        "  ________         .__       .___                       .__      ",
+        " /  _____/    ____ |  |    __| _/______ __ __     _____ |  |__   ",
+        "/   \\  ___  /  _ \|  |   / __ |\\_  __ \\  |  \\/  ___/|     \\ ",
+        "\\   \\_\\  (  <_> )  |__/ /_/ |  |  | \\/  |  /\\___ \\|   Y  \\",
+        " \\______  /\\____/|____/\\____|  |__|   |____/  /____  >___|  / ",
+        "        \\/                  \\/                     \\/    \\/  "
     };
     const int artW = 60;
 
@@ -437,6 +488,7 @@ void Game::flashSpinResult(const std::string& title, int value) const {
     nodelay(msgWin, FALSE);
 }
 
+//show shiny number
 void Game::showRollResultPopup(int value) const {
     int h = 0;
     int w = 0;
@@ -459,7 +511,8 @@ void Game::showRollResultPopup(int value) const {
         touchwin(msgWin);
         wrefresh(msgWin);
     }
-
+    
+    //here
     const std::vector<std::string> banner = bigRollNumberArt(value);
     const std::string title = "YOU ROLLED A";
     static const int flashPairs[] = {
@@ -475,7 +528,7 @@ void Game::showRollResultPopup(int value) const {
 
     const int popupW = std::min(std::max(32, contentWidth + 8), w - 2);
     const int popupH = static_cast<int>(banner.size()) + 6;
-    WINDOW* popup = createCenteredWindow(popupH, popupW, popupH, 28);
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 10, 28);
     if (!popup) {
         showTerminalSizeWarning(popupH, 28, hasColor);
         return;
@@ -771,12 +824,12 @@ bool Game::loadSavedGame() {
 
 Game::StartChoice Game::showStartScreen() {
     const char* lines[] = {
-        "  ________       .__       .___                   .__     ",
-        " /  _____/  ____ |  |    __| _/______ __ __  _____|  |__  ",
-        "/   \\  ___ /  _ \\|  |   / __ |\\_  __ \\  |  \\/  ___/  |  \\ ",
-        "\\    \\_\\  (  <_> )  |__/ /_/ | |  | \\/  |  /\\___ \\|   Y  \\",
-        " \\______  /\\____/|____/\\____ | |__|  |____//____  >___|  /",
-        "        \\/                  \\/                  \\/     \\/ "
+        "  ________         .__       .___                       .__      ",
+        " /  _____/    ____ |  |    __| _/______ __ __     _____ |  |__   ",
+        "/   \\  ___  /  _ \|  |   / __ |\\_  __ \\  |  \\/  ___/|     \\ ",
+        "\\   \\_\\  (  <_> )  |__/ /_/ |  |  | \\/  |  /\\___ \\|   Y  \\",
+        " \\______  /\\____/|____/\\____|  |__|   |____/  /____  >___|  / ",
+        "        \\/                  \\/                     \\/    \\/  "
     };
     const int artLines = static_cast<int>(sizeof(lines) / sizeof(lines[0]));
     const int artW = 60;
