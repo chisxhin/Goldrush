@@ -20,10 +20,11 @@ void centerPrint(WINDOW* win, int y, const std::string& text, int attrs = A_NORM
     int w = 0;
     getmaxyx(win, h, w);
     (void)h;
+    const std::string clipped = clipUiText(text, static_cast<std::size_t>(std::max(1, w - 2)));
     if (attrs != A_NORMAL) {
         wattron(win, attrs);
     }
-    mvwprintw(win, y, std::max(1, (w - static_cast<int>(text.size())) / 2), "%s", text.c_str());
+    mvwprintw(win, y, std::max(1, (w - static_cast<int>(clipped.size())) / 2), "%s", clipped.c_str());
     if (attrs != A_NORMAL) {
         wattroff(win, attrs);
     }
@@ -56,7 +57,7 @@ void addText(std::vector<SummaryLine>& lines,
 }
 
 void drawSummarySection(WINDOW* win, int& y, const SummaryLine& line, int width) {
-    if (y + 2 >= getmaxy(win)) {
+    if (y + 1 >= getmaxy(win) - 2) {
         return;
     }
     wattron(win, COLOR_PAIR(line.colorPair) | A_BOLD);
@@ -122,16 +123,17 @@ void showTurnSummaryReport(const TurnSummary& summary, bool hasColor) {
     int screenH = 0;
     int screenW = 0;
     getmaxyx(stdscr, screenH, screenW);
-    const int popupW = std::min(76, std::max(48, screenW - 4));
-    const int popupH = std::min(std::max(18, 8 + static_cast<int>(lines.size()) * 3), std::max(12, screenH - 2));
-    WINDOW* popup = newwin(popupH,
-                           popupW,
-                           std::max(0, (screenH - popupH) / 2),
-                           std::max(0, (screenW - popupW) / 2));
-    apply_ui_background(popup);
+    int popupW = std::min(76, std::max(48, screenW - 4));
+    int popupH = std::min(std::max(18, 8 + static_cast<int>(lines.size()) * 3), std::max(14, screenH - 2));
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 14, 48);
+    if (!popup) {
+        showTerminalSizeWarning(14, 48, hasColor);
+        return;
+    }
     keypad(popup, TRUE);
+    getmaxyx(popup, popupH, popupW);
     werase(popup);
-    box(popup, 0, 0);
+    drawBoxSafe(popup);
 
     if (hasColor) {
         wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
@@ -154,9 +156,10 @@ void showTurnSummaryReport(const TurnSummary& summary, bool hasColor) {
         drawSummarySection(popup, y, lines[i], popupW);
     }
 
-    mvwprintw(popup, popupH - 2, 3, "Press ENTER to continue...");
+    mvwprintw(popup, popupH - 2, 3, "%s",
+              clipUiText("Press ENTER to continue...", static_cast<std::size_t>(std::max(1, popupW - 5))).c_str());
     wrefresh(popup);
-    waitForEnterPrompt(popup, popupH - 2, 3, "Press ENTER to continue...");
+    waitForEnterPrompt(popup, popupH - 2, 3, "");
     delwin(popup);
     touchwin(stdscr);
     refresh();

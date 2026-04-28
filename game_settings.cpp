@@ -56,25 +56,31 @@ bool parseStrictIntSetting(const std::string& text, int& value) {
 }
 
 bool editNumericSetting(const std::string& label, int& value, int minValue, int maxValue, bool hasColor) {
-    int h = 0;
-    int w = 0;
-    getmaxyx(stdscr, h, w);
-    const int popupW = 58;
-    const int popupH = 7;
-    WINDOW* popup = newwin(popupH, popupW, std::max(0, (h - popupH) / 2), std::max(0, (w - popupW) / 2));
-    apply_ui_background(popup);
+    int popupW = 58;
+    int popupH = 7;
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 7, 42);
+    if (!popup) {
+        showTerminalSizeWarning(7, 42, hasColor);
+        return false;
+    }
     keypad(popup, TRUE);
+    getmaxyx(popup, popupH, popupW);
+    const int contentW = std::max(1, popupW - 4);
     echo();
     curs_set(1);
 
     char buffer[32] = {0};
-    box(popup, 0, 0);
+    drawBoxSafe(popup);
     if (hasColor) wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-    mvwprintw(popup, 1, 2, "%s", clipUiText(label, 52).c_str());
+    mvwprintw(popup, 1, 2, "%s", clipUiText(label, static_cast<std::size_t>(contentW)).c_str());
     if (hasColor) wattroff(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-    mvwprintw(popup, 2, 2, "Current: %d", value);
-    mvwprintw(popup, 3, 2, "Range: %d - %d", minValue, maxValue);
-    mvwprintw(popup, 5, 2, "New value: ");
+    mvwprintw(popup, 2, 2, "%s",
+              clipUiText("Current: " + std::to_string(value), static_cast<std::size_t>(contentW)).c_str());
+    mvwprintw(popup, 3, 2, "%s",
+              clipUiText("Range: " + std::to_string(minValue) + " - " + std::to_string(maxValue),
+                         static_cast<std::size_t>(contentW)).c_str());
+    mvwprintw(popup, popupH - 2, 2, "%s",
+              clipUiText("New value: ", static_cast<std::size_t>(contentW)).c_str());
     wrefresh(popup);
     wgetnstr(popup, buffer, 31);
 
@@ -98,8 +104,13 @@ bool editNumericSetting(const std::string& label, int& value, int minValue, int 
 }
 
 void drawSettingsLine(WINDOW* win, int y, int index, const std::string& label, bool selected) {
+    const int width = getmaxx(win);
+    const int textWidth = std::max(8, width - 8);
     if (selected) wattron(win, A_REVERSE);
-    mvwprintw(win, y, 2, "%2d. %-68s", index + 1, clipUiText(label, 68).c_str());
+    mvwprintw(win, y, 2, "%2d. %-*s",
+              index + 1,
+              textWidth,
+              clipUiText(label, static_cast<std::size_t>(textWidth)).c_str());
     if (selected) wattroff(win, A_REVERSE);
 }
 }
@@ -222,18 +233,24 @@ bool showCustomSettingsMenu(GameSettings& settings, bool hasColor) {
         int h = 0;
         int w = 0;
         getmaxyx(stdscr, h, w);
-        const int popupW = std::min(86, std::max(72, w - 6));
-        const int popupH = std::min(24, std::max(20, h - 4));
-        WINDOW* popup = newwin(popupH, popupW, std::max(0, (h - popupH) / 2), std::max(0, (w - popupW) / 2));
-        apply_ui_background(popup);
+        int popupW = std::min(86, std::max(56, w - 6));
+        int popupH = std::min(24, std::max(16, h - 4));
+        WINDOW* popup = createCenteredWindow(popupH, popupW, 16, 56);
+        if (!popup) {
+            showTerminalSizeWarning(16, 56, hasColor);
+            return false;
+        }
         keypad(popup, TRUE);
+        getmaxyx(popup, popupH, popupW);
+        const int contentW = std::max(1, popupW - 4);
 
         bool redraw = true;
         while (redraw) {
             werase(popup);
-            box(popup, 0, 0);
+            drawBoxSafe(popup);
             if (hasColor) wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-            mvwprintw(popup, 1, 2, "CUSTOM MODE SETTINGS");
+            mvwprintw(popup, 1, 2, "%s",
+                      clipUiText("CUSTOM MODE SETTINGS", static_cast<std::size_t>(contentW)).c_str());
             if (hasColor) wattroff(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
 
             std::vector<std::string> rows;
@@ -256,7 +273,7 @@ bool showCustomSettingsMenu(GameSettings& settings, bool hasColor) {
             rows.push_back("Pets: " + onOff(settings.allowPets));
             rows.push_back("Random Events: " + onOff(settings.allowRandomEvents));
 
-            const int visible = popupH - 6;
+            const int visible = std::max(1, popupH - 6);
             const int top = std::max(0, std::min(selected - visible + 1,
                                                  static_cast<int>(rows.size()) - visible));
             for (int i = 0; i < visible && top + i < static_cast<int>(rows.size()); ++i) {
@@ -264,9 +281,11 @@ bool showCustomSettingsMenu(GameSettings& settings, bool hasColor) {
                                  top + i == selected);
             }
 
-            mvwprintw(popup, popupH - 3, 2, "ENTER edit/toggle  S start  1 Relax  2 Life  3 Hell  ESC back");
+            mvwprintw(popup, popupH - 3, 2, "%s",
+                      clipUiText("ENTER edit/toggle  S start  1 Relax  2 Life  3 Hell  ESC back",
+                                 static_cast<std::size_t>(contentW)).c_str());
             mvwprintw(popup, popupH - 2, 2, "%s", clipUiText(gameSettingsSummary(settings),
-                                                             static_cast<std::size_t>(popupW - 4)).c_str());
+                                                             static_cast<std::size_t>(contentW)).c_str());
             wrefresh(popup);
 
             const int ch = wgetch(popup);
@@ -342,29 +361,35 @@ GameSettings createCustomSettingsFromMenu(bool hasColor) {
 }
 
 bool showGameModeMenu(GameSettings& settings, bool hasColor) {
-    int h = 0;
-    int w = 0;
-    getmaxyx(stdscr, h, w);
-    const int popupW = 56;
-    const int popupH = 12;
-    WINDOW* popup = newwin(popupH, popupW, std::max(0, (h - popupH) / 2), std::max(0, (w - popupW) / 2));
-    apply_ui_background(popup);
+    int popupW = 56;
+    int popupH = 12;
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 10, 42);
+    if (!popup) {
+        showTerminalSizeWarning(10, 42, hasColor);
+        return false;
+    }
     keypad(popup, TRUE);
+    getmaxyx(popup, popupH, popupW);
+    const int contentW = std::max(1, popupW - 4);
     int selected = 0;
 
     while (true) {
         werase(popup);
-        box(popup, 0, 0);
+        drawBoxSafe(popup);
         if (hasColor) wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-        mvwprintw(popup, 1, 2, "Choose Game Mode");
+        mvwprintw(popup, 1, 2, "%s",
+                  clipUiText("Choose Game Mode", static_cast<std::size_t>(contentW)).c_str());
         if (hasColor) wattroff(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
         const char* modes[] = {"Relax Mode", "Life Mode", "Hell Mode", "Custom Mode"};
         for (int i = 0; i < 4; ++i) {
             if (i == selected) wattron(popup, A_REVERSE);
-            mvwprintw(popup, 3 + i, 4, "%d. %s", i + 1, modes[i]);
+            mvwprintw(popup, 3 + i, 4, "%s",
+                      clipUiText(std::to_string(i + 1) + ". " + modes[i],
+                                 static_cast<std::size_t>(std::max(1, popupW - 6))).c_str());
             if (i == selected) wattroff(popup, A_REVERSE);
         }
-        mvwprintw(popup, 9, 2, "ENTER select  ESC back");
+        mvwprintw(popup, popupH - 3, 2, "%s",
+                  clipUiText("ENTER select  ESC back", static_cast<std::size_t>(contentW)).c_str());
         wrefresh(popup);
 
         const int ch = wgetch(popup);

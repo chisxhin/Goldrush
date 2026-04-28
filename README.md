@@ -120,6 +120,18 @@ Compile:
 make
 ```
 
+The Makefile links with wide-character ncurses by default:
+
+```bash
+g++ *.cpp -std=c++17 -lncursesw
+```
+
+Use plain ncurses only if `ncursesw` is not available on the target system:
+
+```bash
+make LIBS=-lncurses
+```
+
 Run:
 
 ```bash

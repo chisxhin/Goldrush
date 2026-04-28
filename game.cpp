@@ -311,6 +311,11 @@ void Game::createWindows() {
     int termH, termW;
     getmaxyx(stdscr, termH, termW);
     const UILayout layout = calculateUILayout(termH, termW);
+    if (layout.originY + layout.totalHeight > termH ||
+        layout.originX + layout.totalWidth > termW) {
+        showTerminalSizeWarning(layout.totalHeight, layout.totalWidth, hasColor);
+        return;
+    }
 
     clear();
     refresh();
@@ -331,6 +336,11 @@ void Game::createWindows() {
                     layout.totalWidth,
                     layout.originY + layout.headerHeight + layout.boardHeight,
                     layout.originX);
+    if (!titleWin || !boardWin || !infoWin || !msgWin) {
+        destroyWindows();
+        showTerminalSizeWarning(layout.totalHeight, layout.totalWidth, hasColor);
+        return;
+    }
 
     keypad(infoWin, TRUE);
     keypad(msgWin, TRUE);
@@ -399,8 +409,10 @@ void Game::flashSpinResult(const std::string& title, int value) const {
     nodelay(msgWin, TRUE);
     for (int flash = 0; flash < 8; ++flash) {
         werase(msgWin);
-        box(msgWin, 0, 0);
-        mvwprintw(msgWin, 1, 2, "%s", title.c_str());
+        drawBoxSafe(msgWin);
+        const int msgW = getmaxx(msgWin);
+        const int contentW = std::max(1, msgW - 4);
+        mvwprintw(msgWin, 1, 2, "%s", clipUiText(title, static_cast<std::size_t>(contentW)).c_str());
 
         const int colorPair = flashPairs[flash % 4];
         if (hasColor) {
@@ -429,6 +441,7 @@ void Game::showRollResultPopup(int value) const {
     int h = 0;
     int w = 0;
     getmaxyx(stdscr, h, w);
+    (void)h;
 
     if (titleWin) {
         touchwin(titleWin);
@@ -462,28 +475,31 @@ void Game::showRollResultPopup(int value) const {
 
     const int popupW = std::min(std::max(32, contentWidth + 8), w - 2);
     const int popupH = static_cast<int>(banner.size()) + 6;
-    WINDOW* popup = newwin(popupH,
-                           popupW,
-                           std::max(0, (h - popupH) / 2),
-                           std::max(0, (w - popupW) / 2));
-    applyWindowBg(popup);
-    const int innerWidth = popupW - 4;
+    WINDOW* popup = createCenteredWindow(popupH, popupW, popupH, 28);
+    if (!popup) {
+        showTerminalSizeWarning(popupH, 28, hasColor);
+        return;
+    }
+    const int innerWidth = getmaxx(popup) - 4;
     for (int flash = 0; flash < 10; ++flash) {
         werase(popup);
-        box(popup, 0, 0);
+        drawBoxSafe(popup);
         const int colorPair = flashPairs[flash % 4];
         if (hasColor) {
             wattron(popup, COLOR_PAIR(colorPair) | A_BOLD | ((flash % 2 == 0) ? A_BLINK : 0));
         } else {
             wattron(popup, A_BOLD | ((flash % 2 == 0) ? A_REVERSE : 0));
         }
-        mvwprintw(popup, 1, 2 + std::max(0, (innerWidth - static_cast<int>(title.size())) / 2), "%s", title.c_str());
+        const std::string clippedTitle = clipUiText(title, static_cast<std::size_t>(std::max(1, innerWidth)));
+        mvwprintw(popup, 1, 2 + std::max(0, (innerWidth - static_cast<int>(clippedTitle.size())) / 2),
+                  "%s", clippedTitle.c_str());
         for (std::size_t i = 0; i < banner.size(); ++i) {
+            const std::string line = clipUiText(banner[i], static_cast<std::size_t>(std::max(1, innerWidth)));
             mvwprintw(popup,
                       3 + static_cast<int>(i),
-                      2 + std::max(0, (innerWidth - static_cast<int>(banner[i].size())) / 2),
+                      2 + std::max(0, (innerWidth - static_cast<int>(line.size())) / 2),
                       "%s",
-                      banner[i].c_str());
+                      line.c_str());
         }
         if (hasColor) {
             wattroff(popup, COLOR_PAIR(colorPair) | A_BOLD | ((flash % 2 == 0) ? A_BLINK : 0));
@@ -523,10 +539,17 @@ bool Game::promptForFilename(const std::string& action,
     echo();
     curs_set(1);
     werase(msgWin);
-    box(msgWin, 0, 0);
-    mvwprintw(msgWin, 1, 2, "%s", promptText.c_str());
-    mvwprintw(msgWin, 2, 2, "Press ENTER for the default name or type a new filename.");
-    wmove(msgWin, 1, 2 + static_cast<int>(promptText.size()));
+    drawBoxSafe(msgWin);
+    const int msgW = getmaxx(msgWin);
+    const std::string clippedPrompt = clipMenuText(promptText, static_cast<std::size_t>(std::max(8, msgW - 4)));
+    mvwprintw(msgWin, 1, 2, "%s", clippedPrompt.c_str());
+    mvwprintw(msgWin,
+              2,
+              2,
+              "%s",
+              clipMenuText("Press ENTER for the default name or type a new filename.",
+                           static_cast<std::size_t>(std::max(8, msgW - 4))).c_str());
+    wmove(msgWin, 1, std::min(msgW - 2, 2 + static_cast<int>(clippedPrompt.size())));
     wrefresh(msgWin);
 
     char buffer[260] = {0};
@@ -558,15 +581,22 @@ bool Game::chooseSaveFileToLoad(SaveFileInfo& selected) {
     int termH, termW;
     getmaxyx(stdscr, termH, termW);
     const int popupH = std::min(20, termH - 4);
-    const int popupW = std::min(108, termW - 4);
-    WINDOW* popup = newwin(popupH, popupW, (termH - popupH) / 2, (termW - popupW) / 2);
-    applyWindowBg(popup);
+    const int popupW = std::min(108, std::max(64, termW - 4));
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 10, 64);
+    if (!popup) {
+        showTerminalSizeWarning(10, 64, hasColor);
+        return false;
+    }
     keypad(popup, TRUE);
 
+    int popupActualH = 0;
+    int popupActualW = 0;
+    getmaxyx(popup, popupActualH, popupActualW);
+
     const int listTop = 4;
-    const int listBottom = popupH - 4;
+    const int listBottom = popupActualH - 4;
     const int visibleRows = std::max(1, listBottom - listTop + 1);
-    const int availableWidth = popupW - 4;
+    const int availableWidth = popupActualW - 4;
     const int modifiedWidth = 19;
     const int sizeWidth = 9;
     int fileWidth = availableWidth - modifiedWidth - sizeWidth - 4;
@@ -586,9 +616,11 @@ bool Game::chooseSaveFileToLoad(SaveFileInfo& selected) {
         }
 
         werase(popup);
-        box(popup, 0, 0);
+        drawBoxSafe(popup);
         mvwprintw(popup, 1, 2, "Load Game");
-        mvwprintw(popup, 2, 2, "Arrow keys move  Enter load  PgUp/PgDn scroll  ESC cancel");
+        mvwprintw(popup, 2, 2, "%s",
+                  clipMenuText("Arrow keys move  Enter load  PgUp/PgDn scroll  ESC cancel",
+                               static_cast<std::size_t>(availableWidth)).c_str());
         mvwprintw(popup, 3, 2, "%-*s  %-19s  %9s", fileWidth, "File", "Modified", "Size");
 
         for (int row = 0; row < visibleRows; ++row) {
@@ -622,14 +654,14 @@ bool Game::chooseSaveFileToLoad(SaveFileInfo& selected) {
 
         const int shownFrom = topIndex + 1;
         const int shownTo = std::min(topIndex + visibleRows, static_cast<int>(saves.size()));
-        mvwprintw(popup, popupH - 3, 2, "%s",
+        mvwprintw(popup, popupActualH - 3, 2, "%s",
                   clipMenuText(saveMenuStatusText(saves[static_cast<std::size_t>(selectedIndex)]),
-                               static_cast<std::size_t>(popupW - 4)).c_str());
-        mvwprintw(popup, popupH - 2, 2, "Showing %d-%d of %d",
+                               static_cast<std::size_t>(availableWidth)).c_str());
+        mvwprintw(popup, popupActualH - 2, 2, "Showing %d-%d of %d",
                   shownFrom, shownTo, static_cast<int>(saves.size()));
-        mvwprintw(popup, popupH - 2, popupW / 2, "%s",
+        mvwprintw(popup, popupActualH - 2, popupActualW / 2, "%s",
                   clipMenuText(saves[static_cast<std::size_t>(selectedIndex)].filename,
-                               static_cast<std::size_t>(popupW / 2 - 4)).c_str());
+                               static_cast<std::size_t>(std::max(1, popupActualW / 2 - 4))).c_str());
         wrefresh(popup);
 
         const int ch = wgetch(popup);
@@ -869,18 +901,22 @@ bool Game::chooseBoardViewMode() {
         int h = 0;
         int w = 0;
         getmaxyx(stdscr, h, w);
+        (void)h;
         const int popupW = std::min(78, std::max(60, w - 6));
         const int popupH = 14;
-        WINDOW* popup = newwin(popupH,
-                               popupW,
-                               std::max(0, (h - popupH) / 2),
-                               std::max(0, (w - popupW) / 2));
-        applyWindowBg(popup);
+        WINDOW* popup = createCenteredWindow(popupH, popupW, 12, 50);
+        if (!popup) {
+            showTerminalSizeWarning(12, 50, hasColor);
+            return false;
+        }
         keypad(popup, TRUE);
+        int popupActualH = 0;
+        int popupActualW = 0;
+        getmaxyx(popup, popupActualH, popupActualW);
 
         while (true) {
             werase(popup);
-            box(popup, 0, 0);
+            drawBoxSafe(popup);
             if (hasColor) wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
             mvwprintw(popup, 1, 2, "Choose Board Display");
             if (hasColor) wattroff(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
@@ -897,17 +933,23 @@ bool Game::chooseBoardViewMode() {
             for (int i = 0; i < 2; ++i) {
                 const int row = 4 + (i * 3);
                 if (selected == i) wattron(popup, A_REVERSE | A_BOLD);
-                mvwprintw(popup, row, 4, "%d. %-30s", i + 1, names[i]);
+                mvwprintw(popup, row, 4, "%s",
+                          clipUiText(std::to_string(i + 1) + ". " + names[i],
+                                     static_cast<std::size_t>(std::max(1, popupActualW - 6))).c_str());
                 if (selected == i) wattroff(popup, A_REVERSE | A_BOLD);
                 mvwprintw(popup,
                           row + 1,
                           7,
                           "%s",
-                          clipUiText(descriptions[i], static_cast<std::size_t>(popupW - 10)).c_str());
+                          clipUiText(descriptions[i], static_cast<std::size_t>(popupActualW - 10)).c_str());
             }
 
-            mvwprintw(popup, popupH - 3, 2, "Use UP/DOWN or A/D. ENTER select. ESC back.");
-            mvwprintw(popup, popupH - 2, 2, "Selected: %s", names[selected]);
+            mvwprintw(popup, popupActualH - 3, 2, "%s",
+                      clipUiText("Use UP/DOWN or A/D. ENTER select. ESC back.",
+                                 static_cast<std::size_t>(std::max(1, popupActualW - 4))).c_str());
+            mvwprintw(popup, popupActualH - 2, 2, "%s",
+                      clipUiText(std::string("Selected: ") + names[selected],
+                                 static_cast<std::size_t>(std::max(1, popupActualW - 4))).c_str());
             wrefresh(popup);
 
             const int ch = wgetch(popup);
@@ -942,11 +984,16 @@ bool Game::chooseBoardViewMode() {
 }
 
 bool Game::configureCustomRules() {
-    int h, w;
-    getmaxyx(stdscr, h, w);
-    WINDOW* popup = newwin(18, 72, (h - 18) / 2, (w - 72) / 2);
-    applyWindowBg(popup);
+    WINDOW* popup = createCenteredWindow(18, 72, 18, 56);
+    if (!popup) {
+        showTerminalSizeWarning(18, 56, hasColor);
+        return false;
+    }
     keypad(popup, TRUE);
+    int popupH = 0;
+    int popupW = 0;
+    getmaxyx(popup, popupH, popupW);
+    const int contentW = std::max(1, popupW - 4);
 
     struct ToggleRow {
         const char* label;
@@ -970,21 +1017,26 @@ bool Game::configureCustomRules() {
 
     while (true) {
         werase(popup);
-        box(popup, 0, 0);
+        drawBoxSafe(popup);
         mvwprintw(popup, 1, 2, "Custom Mode");
-        mvwprintw(popup, 2, 2, "Toggle rules with SPACE or ENTER. Select Start Game when ready.");
+        mvwprintw(popup, 2, 2, "%s",
+                  clipUiText("Toggle rules with SPACE or ENTER. Select Start Game when ready.",
+                             static_cast<std::size_t>(contentW)).c_str());
 
         for (size_t i = 0; i < rows.size(); ++i) {
             if (static_cast<int>(i) == highlight) wattron(popup, A_REVERSE);
-            mvwprintw(popup, 4 + static_cast<int>(i), 2, "[%c] %s",
-                      *rows[i].value ? 'x' : ' ', rows[i].label);
+            mvwprintw(popup, 4 + static_cast<int>(i), 2, "%s",
+                      clipUiText(std::string("[") + (*rows[i].value ? 'x' : ' ') + "] " + rows[i].label,
+                                 static_cast<std::size_t>(contentW)).c_str());
             if (static_cast<int>(i) == highlight) wattroff(popup, A_REVERSE);
         }
 
         if (highlight == startRowIndex) wattron(popup, A_REVERSE);
-        mvwprintw(popup, 15, 2, "Start Game");
+        mvwprintw(popup, popupH - 3, 2, "Start Game");
         if (highlight == startRowIndex) wattroff(popup, A_REVERSE);
-        mvwprintw(popup, 16, 2, "Up/Down move  Enter/Space toggle  ESC close config");
+        mvwprintw(popup, popupH - 2, 2, "%s",
+                  clipUiText("Up/Down move  Enter/Space toggle  ESC close config",
+                             static_cast<std::size_t>(contentW)).c_str());
         wrefresh(popup);
 
         int ch = wgetch(popup);
@@ -1066,26 +1118,39 @@ void Game::maybeShowSabotageUnlock(int playerIndex) {
 }
 
 void Game::showControlsPopup() const {
-    int h, w;
-    getmaxyx(stdscr, h, w);
-    WINDOW* popup = newwin(16, 70, (h - 16) / 2, (w - 70) / 2);
-    applyWindowBg(popup);
-    box(popup, 0, 0);
+    WINDOW* popup = createCenteredWindow(16, 70, 16, 50);
+    if (!popup) {
+        showTerminalSizeWarning(16, 50, hasColor);
+        return;
+    }
+    drawBoxSafe(popup);
+    int popupH = 0;
+    int popupW = 0;
+    getmaxyx(popup, popupH, popupW);
+    const int contentW = std::max(1, popupW - 4);
     mvwprintw(popup, 1, 2, "Controls");
-    mvwprintw(popup, 3, 2, "ENTER  Confirm a menu or start your turn spin");
-    mvwprintw(popup, 4, 2, "SPACE  Hold/release to spin the wheel");
-    mvwprintw(popup, 5, 2, "UP/DN  Move through menus and custom mode toggles");
-    mvwprintw(popup, 6, 2, "TAB    Open the player scoreboard and minimap");
-    mvwprintw(popup, 7, 2, "G      Open the tile abbreviation guide");
-    mvwprintw(popup, 8, 2, "B      Open sabotage and defense actions");
-    mvwprintw(popup, 9, 2, "S      Save the current game");
-    mvwprintw(popup, 10, 2, "K/?    Open this controls popup");
-    mvwprintw(popup, 11, 2, "ESC    Open the quit menu / back out");
-    mvwprintw(popup, 12, 2, "STOP spaces end movement immediately.");
-    mvwprintw(popup, 13, 2, "College tuition is paid as soon as College route is chosen.");
-    mvwprintw(popup, 14, 2, "Press ENTER");
+    const std::vector<std::string> lines{
+        "ENTER  Confirm a menu or start your turn spin",
+        "SPACE  Hold/release to spin the wheel",
+        "UP/DN  Move through menus and custom mode toggles",
+        "TAB    Open the player scoreboard and minimap",
+        "G      Open the tile abbreviation guide",
+        "B      Open sabotage and defense actions",
+        "S      Save the current game",
+        "K/?    Open this controls popup",
+        "ESC    Open the quit menu / back out",
+        "STOP spaces end movement immediately.",
+        "College tuition is paid as soon as College route is chosen."
+    };
+    for (int i = 0; i < static_cast<int>(lines.size()) && 3 + i < popupH - 2; ++i) {
+        mvwprintw(popup, 3 + i, 2, "%s",
+                  clipUiText(lines[static_cast<std::size_t>(i)],
+                             static_cast<std::size_t>(contentW)).c_str());
+    }
+    mvwprintw(popup, popupH - 2, 2, "%s",
+              clipUiText("Press ENTER", static_cast<std::size_t>(contentW)).c_str());
     wrefresh(popup);
-    waitForEnter(popup, 14, 15, "");
+    waitForEnter(popup, popupH - 2, std::min(popupW - 2, 15), "");
     delwin(popup);
 }
 
@@ -1094,20 +1159,33 @@ void Game::showScoreboardPopup() const {
     getmaxyx(stdscr, h, w);
     const int popupH = std::min(28, std::max(18, h - 4));
     const int popupW = std::min(104, std::max(92, w - 8));
-    WINDOW* popup = newwin(popupH, popupW, (h - popupH) / 2, (w - popupW) / 2);
-    applyWindowBg(popup);
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 18, 70);
+    if (!popup) {
+        showTerminalSizeWarning(18, 70, hasColor);
+        return;
+    }
     keypad(popup, TRUE);
-    box(popup, 0, 0);
+    drawBoxSafe(popup);
+    int actualPopupH = 0;
+    int actualPopupW = 0;
+    getmaxyx(popup, actualPopupH, actualPopupW);
 
-    WINDOW* scoreWin = derwin(popup, popupH - 4, 56, 2, 2);
-    WINDOW* mapWin = derwin(popup, popupH - 4, popupW - 61, 2, 59);
+    WINDOW* scoreWin = derwin(popup, actualPopupH - 4, 56, 2, 2);
+    WINDOW* mapWin = derwin(popup, actualPopupH - 4, actualPopupW - 61, 2, 59);
+    if (!scoreWin || !mapWin) {
+        if (mapWin) delwin(mapWin);
+        if (scoreWin) delwin(scoreWin);
+        delwin(popup);
+        showTerminalSizeWarning(18, 70, hasColor);
+        return;
+    }
     applyWindowBg(scoreWin);
     applyWindowBg(mapWin);
 
-    blinkIndicator(popup, 1, 2, "Scoreboard + Minimap", hasColor, GOLDRUSH_GOLD_SAND, 2, 0, popupW - 4);
+    blinkIndicator(popup, 1, 2, "Scoreboard + Minimap", hasColor, GOLDRUSH_GOLD_SAND, 2, 0, actualPopupW - 4);
 
     werase(scoreWin);
-    box(scoreWin, 0, 0);
+    drawBoxSafe(scoreWin);
     const int scoreWinH = getmaxy(scoreWin);
     const int scoreWinW = getmaxx(scoreWin);
     mvwprintw(scoreWin, 1, 2, "SCOREBOARD");
@@ -1167,7 +1245,7 @@ void Game::showScoreboardPopup() const {
 
     drawMinimapPanel(mapWin, board, players, currentPlayerIndex);
 
-    mvwprintw(popup, popupH - 2, 2, "Close with TAB, ENTER, or ESC.");
+    mvwprintw(popup, actualPopupH - 2, 2, "Close with TAB, ENTER, or ESC.");
     wrefresh(popup);
 
     while (true) {
@@ -1185,25 +1263,47 @@ void Game::showScoreboardPopup() const {
 void Game::showTileGuidePopup() const {
     int h, w;
     getmaxyx(stdscr, h, w);
+    (void)h;
+    (void)w;
     const std::vector<std::string> legend = board.tutorialLegend();
     const int popupH = 24;
     const int popupW = 82;
-    WINDOW* popup = newwin(popupH, popupW, (h - popupH) / 2, (w - popupW) / 2);
-    applyWindowBg(popup);
-    box(popup, 0, 0);
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 16, 54);
+    if (!popup) {
+        showTerminalSizeWarning(16, 54, hasColor);
+        return;
+    }
+    drawBoxSafe(popup);
+    int actualH = 0;
+    int actualW = 0;
+    getmaxyx(popup, actualH, actualW);
 
-    blinkIndicator(popup, 1, 2, "Quick Tutorial: Tile Guide", hasColor, GOLDRUSH_GOLD_SAND, 2, 0, popupW - 4);
-    mvwprintw(popup, 2, 2, "Board abbreviations show as Full Name (ABBR)");
+    blinkIndicator(popup, 1, 2, "Quick Tutorial: Tile Guide", hasColor, GOLDRUSH_GOLD_SAND, 2, 0, actualW - 4);
+    mvwprintw(popup, 2, 2, "%s",
+              clipUiText("Board abbreviations show as Full Name (ABBR)",
+                         static_cast<std::size_t>(std::max(1, actualW - 4))).c_str());
 
+    const bool twoColumns = actualW >= 78;
+    const int rowsPerColumn = twoColumns ? 10 : std::max(1, actualH - 6);
+    const int columnWidth = twoColumns ? std::max(1, (actualW - 6) / 2) : std::max(1, actualW - 4);
     for (size_t i = 0; i < legend.size(); ++i) {
-        const int columnX = i < 10 ? 2 : 41;
-        const int rowY = 4 + static_cast<int>(i % 10);
-        mvwprintw(popup, rowY, columnX, "%s", legend[i].c_str());
+        const int column = twoColumns ? static_cast<int>(i) / rowsPerColumn : 0;
+        if (column > 1) {
+            break;
+        }
+        const int columnX = twoColumns ? (2 + column * (columnWidth + 2)) : 2;
+        const int rowY = 4 + static_cast<int>(i % rowsPerColumn);
+        if (rowY >= actualH - 2) {
+            break;
+        }
+        mvwprintw(popup, rowY, columnX, "%s",
+                  clipUiText(legend[i], static_cast<std::size_t>(columnWidth)).c_str());
     }
 
-    mvwprintw(popup, popupH - 2, 2, "Press ENTER");
+    mvwprintw(popup, actualH - 2, 2, "%s",
+              clipUiText("Press ENTER", static_cast<std::size_t>(std::max(1, actualW - 4))).c_str());
     wrefresh(popup);
-    waitForEnter(popup, popupH - 2, 15, "");
+    waitForEnter(popup, actualH - 2, 15, "");
     delwin(popup);
 }
 
@@ -1362,30 +1462,39 @@ int Game::chooseSabotageTarget(int attackerIndex) {
         return -1;
     }
 
-    int h, w;
-    getmaxyx(stdscr, h, w);
-    WINDOW* popup = newwin(14, 68, (h - 14) / 2, (w - 68) / 2);
-    applyWindowBg(popup);
+    WINDOW* popup = createCenteredWindow(14, 68, 10, 42);
+    if (!popup) {
+        showTerminalSizeWarning(10, 42, hasColor);
+        return -1;
+    }
     keypad(popup, TRUE);
+    int popupH = 0;
+    int popupW = 0;
+    getmaxyx(popup, popupH, popupW);
+    const int contentW = std::max(1, popupW - 4);
     int selected = 0;
     while (true) {
         werase(popup);
-        box(popup, 0, 0);
+        drawBoxSafe(popup);
         mvwprintw(popup, 1, 2, "Choose Sabotage Target");
-        for (size_t row = 0; row < candidates.size(); ++row) {
+        const int visibleRows = std::max(1, popupH - 5);
+        for (size_t row = 0; row < candidates.size() && static_cast<int>(row) < visibleRows; ++row) {
             const int playerIndex = candidates[row];
             if (static_cast<int>(row) == selected) {
                 wattron(popup, A_REVERSE);
             }
-            mvwprintw(popup, 3 + static_cast<int>(row), 2, "%s  cash $%d  worth $%d",
-                      players[static_cast<std::size_t>(playerIndex)].name.c_str(),
-                      players[static_cast<std::size_t>(playerIndex)].cash,
-                      calculateFinalWorth(players[static_cast<std::size_t>(playerIndex)]));
+            const Player& target = players[static_cast<std::size_t>(playerIndex)];
+            mvwprintw(popup, 3 + static_cast<int>(row), 2, "%s",
+                      clipUiText(target.name + "  cash $" + std::to_string(target.cash) +
+                                     "  worth $" + std::to_string(calculateFinalWorth(target)),
+                                 static_cast<std::size_t>(contentW)).c_str());
             if (static_cast<int>(row) == selected) {
                 wattroff(popup, A_REVERSE);
             }
         }
-        mvwprintw(popup, 12, 2, "Up/Down move  ENTER select  ESC cancel");
+        mvwprintw(popup, popupH - 2, 2, "%s",
+                  clipUiText("Up/Down move  ENTER select  ESC cancel",
+                             static_cast<std::size_t>(contentW)).c_str());
         wrefresh(popup);
 
         const int ch = wgetch(popup);
@@ -1411,7 +1520,7 @@ int Game::chooseTrapTile(int attackerIndex) {
         echo();
         curs_set(1);
         werase(msgWin);
-        box(msgWin, 0, 0);
+        drawBoxSafe(msgWin);
         mvwprintw(msgWin, 1, 2, "Trap tile id (0-%d) [%d]: ", TILE_COUNT - 1, player.tile);
         mvwprintw(msgWin, 2, 2, "Tip: choose a tile ahead of the leader. Blank uses your current tile.");
         if (!errorText.empty()) {
@@ -1556,34 +1665,53 @@ bool Game::promptSabotageMenu(int attackerIndex) {
                       "Sabotage unlocks on Turn " + std::to_string(std::max(1, settings.sabotageUnlockTurn)) + ".");
         return false;
     }
-    int h, w;
-    getmaxyx(stdscr, h, w);
-    WINDOW* popup = newwin(19, 82, (h - 19) / 2, (w - 82) / 2);
-    applyWindowBg(popup);
+    WINDOW* popup = createCenteredWindow(19, 82, 19, 58);
+    if (!popup) {
+        showTerminalSizeWarning(19, 58, hasColor);
+        return false;
+    }
     keypad(popup, TRUE);
+    int popupH = 0;
+    int popupW = 0;
+    getmaxyx(popup, popupH, popupW);
+    const int contentW = std::max(1, popupW - 4);
     std::string status;
 
     while (true) {
         werase(popup);
-        box(popup, 0, 0);
-        mvwprintw(popup, 1, 2, "Sabotage Menu - %s", attacker.name.c_str());
-        mvwprintw(popup, 2, 2, "Cash $%d  Shields %d  Insurance %d  Cooldown %d",
-                  attacker.cash, attacker.shieldCards, attacker.insuranceUses, attacker.sabotageCooldown);
-        mvwprintw(popup, 4, 2, "1 Trap Tile ($12000)");
-        mvwprintw(popup, 5, 2, "2 Lawsuit ($15000)");
-        mvwprintw(popup, 6, 2, "3 Traffic Jam ($10000)");
-        mvwprintw(popup, 7, 2, "4 Steal Action Card ($18000)");
-        mvwprintw(popup, 8, 2, "5 Forced Duel Minigame ($22000)");
-        mvwprintw(popup, 9, 2, "6 Career Sabotage ($24000)");
-        mvwprintw(popup, 10, 2, "7 Position Swap ($90000, cooldown)");
-        mvwprintw(popup, 11, 2, "8 Debt Trap ($20000)");
-        mvwprintw(popup, 12, 2, "9 Buy Shield Card ($15000)");
-        mvwprintw(popup, 13, 2, "0 Buy Insurance ($20000, 2 uses)");
-        mvwprintw(popup, 14, 2, "D Item Disable ($16000)");
-        if (!status.empty()) {
-            mvwprintw(popup, 16, 2, "%s", status.c_str());
+        drawBoxSafe(popup);
+        mvwprintw(popup, 1, 2, "%s",
+                  clipUiText("Sabotage Menu - " + attacker.name, static_cast<std::size_t>(contentW)).c_str());
+        mvwprintw(popup, 2, 2, "%s",
+                  clipUiText("Cash $" + std::to_string(attacker.cash) +
+                                 "  Shields " + std::to_string(attacker.shieldCards) +
+                                 "  Insurance " + std::to_string(attacker.insuranceUses) +
+                                 "  Cooldown " + std::to_string(attacker.sabotageCooldown),
+                             static_cast<std::size_t>(contentW)).c_str());
+        const std::vector<std::string> options{
+            "1 Trap Tile ($12000)",
+            "2 Lawsuit ($15000)",
+            "3 Traffic Jam ($10000)",
+            "4 Steal Action Card ($18000)",
+            "5 Forced Duel Minigame ($22000)",
+            "6 Career Sabotage ($24000)",
+            "7 Position Swap ($90000, cooldown)",
+            "8 Debt Trap ($20000)",
+            "9 Buy Shield Card ($15000)",
+            "0 Buy Insurance ($20000, 2 uses)",
+            "D Item Disable ($16000)"
+        };
+        for (int i = 0; i < static_cast<int>(options.size()) && 4 + i < popupH - 4; ++i) {
+            mvwprintw(popup, 4 + i, 2, "%s",
+                      clipUiText(options[static_cast<std::size_t>(i)],
+                                 static_cast<std::size_t>(contentW)).c_str());
         }
-        mvwprintw(popup, 17, 2, "Choose option or ESC cancel");
+        if (!status.empty()) {
+            mvwprintw(popup, popupH - 3, 2, "%s",
+                      clipUiText(status, static_cast<std::size_t>(contentW)).c_str());
+        }
+        mvwprintw(popup, popupH - 2, 2, "%s",
+                  clipUiText("Choose option or ESC cancel", static_cast<std::size_t>(contentW)).c_str());
         wrefresh(popup);
 
         const int ch = wgetch(popup);
@@ -1745,9 +1873,12 @@ void Game::setupPlayers() {
     int numPlayers = 0;
     while (numPlayers < 2 || numPlayers > 4) {
         werase(msgWin);
-        box(msgWin, 0, 0);
-        mvwprintw(msgWin, 1, std::max(2, (getmaxx(msgWin) - 16) / 2), "Players (2-4):");
-        mvwprintw(msgWin, 3, 2, "Enter number of players: ");
+        drawBoxSafe(msgWin);
+        const int msgW = getmaxx(msgWin);
+        const int contentW = std::max(1, msgW - 4);
+        mvwprintw(msgWin, 1, std::max(2, (msgW - 16) / 2), "Players (2-4):");
+        mvwprintw(msgWin, 3, 2, "%s",
+                  clipUiText("Enter number of players: ", static_cast<std::size_t>(contentW)).c_str());
         wrefresh(msgWin);
 
         echo();
@@ -1763,9 +1894,12 @@ void Game::setupPlayers() {
         }
 
         werase(msgWin);
-        box(msgWin, 0, 0);
-        mvwprintw(msgWin, 1, 2, "Invalid input. Please enter 2, 3, or 4.");
-        mvwprintw(msgWin, 2, 2, "Press any key to try again.");
+        drawBoxSafe(msgWin);
+        mvwprintw(msgWin, 1, 2, "%s",
+                  clipUiText("Invalid input. Please enter 2, 3, or 4.",
+                             static_cast<std::size_t>(contentW)).c_str());
+        mvwprintw(msgWin, 2, 2, "%s",
+                  clipUiText("Press any key to try again.", static_cast<std::size_t>(contentW)).c_str());
         wrefresh(msgWin);
         wgetch(msgWin);
         drawSetupTitle();
@@ -1812,17 +1946,24 @@ void Game::setupPlayers() {
         echo();
         curs_set(1);
         werase(msgWin);
-        box(msgWin, 0, 0);
+        drawBoxSafe(msgWin);
+        const int msgW = getmaxx(msgWin);
+        const int contentW = std::max(1, msgW - 4);
         mvwprintw(msgWin,
                   1,
-                  std::max(2, (getmaxx(msgWin) - 26) / 2),
+                  std::max(2, (msgW - 26) / 2),
                   "Setting up player %d of %d",
                   i + 1,
                   numPlayers);
         if (playerType == PlayerType::CPU) {
-            mvwprintw(msgWin, 3, 2, "CPU %d name [CPU %d]: ", i + 1, i + 1);
+            mvwprintw(msgWin, 3, 2, "%s",
+                      clipUiText("CPU " + std::to_string(i + 1) +
+                                     " name [CPU " + std::to_string(i + 1) + "]: ",
+                                 static_cast<std::size_t>(contentW)).c_str());
         } else {
-            mvwprintw(msgWin, 3, 2, "Player %d name: ", i + 1);
+            mvwprintw(msgWin, 3, 2, "%s",
+                      clipUiText("Player " + std::to_string(i + 1) + " name: ",
+                                 static_cast<std::size_t>(contentW)).c_str());
         }
         wrefresh(msgWin);
         char nameBuf[32] = {0};
@@ -2069,10 +2210,15 @@ void Game::showTurnSummaryPopup(int playerIndex,
 }
 
 int Game::rollSpinner(const std::string& title, const std::string& detail) {
+    int msgH = 0;
+    int msgW = 0;
+    getmaxyx(msgWin, msgH, msgW);
+    (void)msgH;
+    const int contentW = std::max(1, msgW - 4);
     werase(msgWin);
-    box(msgWin, 0, 0);
-    mvwprintw(msgWin, 1, 2, "%s", title.c_str());
-    mvwprintw(msgWin, 2, 2, "%s", detail.c_str());
+    drawBoxSafe(msgWin);
+    mvwprintw(msgWin, 1, 2, "%s", clipUiText(title, static_cast<std::size_t>(contentW)).c_str());
+    mvwprintw(msgWin, 2, 2, "%s", clipUiText(detail, static_cast<std::size_t>(contentW)).c_str());
     wrefresh(msgWin);
 
     if (autoAdvanceUi) {
@@ -2080,8 +2226,8 @@ int Game::rollSpinner(const std::string& title, const std::string& detail) {
         for (int flash = 0; flash < 6; ++flash) {
             value = rng.roll10();
             werase(msgWin);
-            box(msgWin, 0, 0);
-            mvwprintw(msgWin, 1, 2, "%s", title.c_str());
+            drawBoxSafe(msgWin);
+            mvwprintw(msgWin, 1, 2, "%s", clipUiText(title, static_cast<std::size_t>(contentW)).c_str());
             mvwprintw(msgWin, 2, 2, "CPU rolling: %d", value);
             wrefresh(msgWin);
             napms(90);
@@ -2103,9 +2249,11 @@ int Game::rollSpinner(const std::string& title, const std::string& detail) {
     while (true) {
         value = rng.roll10();
         werase(msgWin);
-        box(msgWin, 0, 0);
-        mvwprintw(msgWin, 1, 2, "%s", title.c_str());
-        mvwprintw(msgWin, 2, 2, "Rolling: %d  Release SPACE to stop", value);
+        drawBoxSafe(msgWin);
+        mvwprintw(msgWin, 1, 2, "%s", clipUiText(title, static_cast<std::size_t>(contentW)).c_str());
+        mvwprintw(msgWin, 2, 2, "%s",
+                  clipUiText("Rolling: " + std::to_string(value) + "  Release SPACE to stop",
+                             static_cast<std::size_t>(contentW)).c_str());
         wrefresh(msgWin);
         napms(80);
 
@@ -2124,12 +2272,12 @@ int Game::rollSpinner(const std::string& title, const std::string& detail) {
     flashSpinResult(title, value);
     showRollResultPopup(value);
     werase(msgWin);
-    box(msgWin, 0, 0);
+    drawBoxSafe(msgWin);
     const std::string settle = "The wheel settles on " + std::to_string(value) + ". Press ENTER to continue the story.";
-    int msgW = 0;
-    getmaxyx(msgWin, ch, msgW);
-    mvwprintw(msgWin, 1, std::max(2, (msgW - static_cast<int>(title.size())) / 2), "%s", title.c_str());
-    mvwprintw(msgWin, 2, std::max(2, (msgW - static_cast<int>(settle.size())) / 2), "%s", settle.c_str());
+    const std::string clippedTitle = clipUiText(title, static_cast<std::size_t>(contentW));
+    const std::string clippedSettle = clipUiText(settle, static_cast<std::size_t>(contentW));
+    mvwprintw(msgWin, 1, std::max(2, (msgW - static_cast<int>(clippedTitle.size())) / 2), "%s", clippedTitle.c_str());
+    mvwprintw(msgWin, 2, std::max(2, (msgW - static_cast<int>(clippedSettle.size())) / 2), "%s", clippedSettle.c_str());
     wrefresh(msgWin);
     waitForEnter(msgWin, 2, 2, "");
     return value;
@@ -2722,31 +2870,45 @@ int Game::playActionCard(int playerIndex, const Tile& tile) {
         addHistory(player.name + " result: " + branchText + " -> " + result);
     }
 
-    int h, w;
-    getmaxyx(stdscr, h, w);
-    WINDOW* popup = newwin(12, 64, (h - 12) / 2, (w - 64) / 2);
-    applyWindowBg(popup);
+    WINDOW* popup = createCenteredWindow(12, 64, 12, 44);
+    if (!popup) {
+        showTerminalSizeWarning(12, 44, hasColor);
+        return amount;
+    }
+    int popupH = 0;
+    int popupW = 0;
+    getmaxyx(popup, popupH, popupW);
+    const int contentW = std::max(1, popupW - 4);
     werase(popup);
-    box(popup, 0, 0);
+    drawBoxSafe(popup);
     mvwprintw(popup, 1, 2, "ACTION CARD");
-    mvwprintw(popup, 2, 2, "%s", card.title.c_str());
-    mvwprintw(popup, 4, 2, "%s", card.description.c_str());
+    mvwprintw(popup, 2, 2, "%s", clipUiText(card.title, static_cast<std::size_t>(contentW)).c_str());
+    mvwprintw(popup, 4, 2, "%s", clipUiText(card.description, static_cast<std::size_t>(contentW)).c_str());
     if (rollValue > 0) {
         mvwprintw(popup, 5, 2, "Rolled: %d", rollValue);
     }
     if (!branchText.empty()) {
-        mvwprintw(popup, 6, 2, "Branch: %s", branchText.c_str());
+        mvwprintw(popup, 6, 2, "%s",
+                  clipUiText("Branch: " + branchText, static_cast<std::size_t>(contentW)).c_str());
     }
     if (amount > 0) {
-        blinkIndicator(popup, 7, 2, "Result: " + result, hasColor, GOLDRUSH_BLACK_FOREST, 2, 2000, 60);
+        blinkIndicator(popup, 7, 2, clipUiText("Result: " + result, static_cast<std::size_t>(contentW)),
+                       hasColor, GOLDRUSH_BLACK_FOREST, 2, 2000, contentW);
     } else if (amount < 0) {
-        blinkIndicator(popup, 7, 2, "Result: " + result, hasColor, GOLDRUSH_GOLD_TERRA, 2, 2000, 60);
+        blinkIndicator(popup, 7, 2, clipUiText("Result: " + result, static_cast<std::size_t>(contentW)),
+                       hasColor, GOLDRUSH_GOLD_TERRA, 2, 2000, contentW);
     } else {
-        mvwprintw(popup, 7, 2, "Result: %s", result.c_str());
+        mvwprintw(popup, 7, 2, "%s",
+                  clipUiText("Result: " + result, static_cast<std::size_t>(contentW)).c_str());
     }
-    mvwprintw(popup, 8, 2, "%s", card.keepAfterUse ? "Kept for endgame scoring." : "Discarded after use.");
-    mvwprintw(popup, 9, 2, "Cash now: $%d  Loans: %d", player.cash, player.loans);
-    mvwprintw(popup, 10, 2, "Press ENTER");
+    mvwprintw(popup, 8, 2, "%s",
+              clipUiText(card.keepAfterUse ? "Kept for endgame scoring." : "Discarded after use.",
+                         static_cast<std::size_t>(contentW)).c_str());
+    mvwprintw(popup, popupH - 3, 2, "%s",
+              clipUiText("Cash now: $" + std::to_string(player.cash) +
+                             "  Loans: " + std::to_string(player.loans),
+                         static_cast<std::size_t>(contentW)).c_str());
+    mvwprintw(popup, popupH - 2, 2, "Press ENTER");
     wrefresh(popup);
 
     if (autoAdvanceUi) {

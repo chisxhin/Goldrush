@@ -311,13 +311,13 @@ void drawLineSegment(WINDOW* win, int y1, int x1, int y2, int x2, bool hasColor,
     while (x != x2) {
         x += (x2 > x) ? 1 : -1;
         if (y > 0 && y < maxY - 1 && x > 0 && x < maxX - 1) {
-            mvwaddch(win, y, x, ACS_HLINE);
+            drawBorderCharSafe(win, y, x, ACS_HLINE);
         }
     }
     while (y != y2) {
         y += (y2 > y) ? 1 : -1;
         if (y > 0 && y < maxY - 1 && x > 0 && x < maxX - 1) {
-            mvwaddch(win, y, x, ACS_VLINE);
+            drawBorderCharSafe(win, y, x, ACS_VLINE);
         }
     }
 
@@ -387,14 +387,7 @@ void drawTileBox(WINDOW* boardWin,
         wattron(boardWin, attrs);
     }
 
-    mvwaddch(boardWin, tileTop, tileLeft, ACS_ULCORNER);
-    mvwhline(boardWin, tileTop, tileLeft + 1, ACS_HLINE, TILE_W - 2);
-    mvwaddch(boardWin, tileTop, tileLeft + TILE_W - 1, ACS_URCORNER);
-    mvwvline(boardWin, tileTop + 1, tileLeft, ACS_VLINE, TILE_H - 2);
-    mvwvline(boardWin, tileTop + 1, tileLeft + TILE_W - 1, ACS_VLINE, TILE_H - 2);
-    mvwaddch(boardWin, tileTop + TILE_H - 1, tileLeft, ACS_LLCORNER);
-    mvwhline(boardWin, tileTop + TILE_H - 1, tileLeft + 1, ACS_HLINE, TILE_W - 2);
-    mvwaddch(boardWin, tileTop + TILE_H - 1, tileLeft + TILE_W - 1, ACS_LRCORNER);
+    drawBoxAtSafe(boardWin, tileTop, tileLeft, TILE_H, TILE_W);
 
     if (hasColor) {
         wattroff(boardWin, COLOR_PAIR(borderPair) | attrs);
@@ -446,19 +439,19 @@ void drawClassicBoardGrid(WINDOW* boardWin, bool hasColor) {
         const RowSegment& row = CLASSIC_ROW_SEGMENTS[i];
         const int left = CLASSIC_BOARD_POSITIONS[row.startIndex].x - 1;
         const int width = row.count * 4 + 1;
-        mvwhline(boardWin, row.y - 1, left, ACS_HLINE, width);
-        mvwhline(boardWin, row.y + 1, left, ACS_HLINE, width);
+        drawBorderLineSafe(boardWin, row.y - 1, left, width);
+        drawBorderLineSafe(boardWin, row.y + 1, left, width);
         for (int col = 0; col <= row.count; ++col) {
-            mvwaddch(boardWin, row.y, left + (col * 4), ACS_VLINE);
+            drawBorderCharSafe(boardWin, row.y, left + (col * 4), ACS_VLINE);
         }
-        mvwaddch(boardWin, row.y - 1, left, ACS_ULCORNER);
-        mvwaddch(boardWin, row.y + 1, left, ACS_LLCORNER);
+        drawBorderCharSafe(boardWin, row.y - 1, left, ACS_ULCORNER);
+        drawBorderCharSafe(boardWin, row.y + 1, left, ACS_LLCORNER);
         for (int col = 1; col < row.count; ++col) {
-            mvwaddch(boardWin, row.y - 1, left + (col * 4), ACS_TTEE);
-            mvwaddch(boardWin, row.y + 1, left + (col * 4), ACS_BTEE);
+            drawBorderCharSafe(boardWin, row.y - 1, left + (col * 4), ACS_TTEE);
+            drawBorderCharSafe(boardWin, row.y + 1, left + (col * 4), ACS_BTEE);
         }
-        mvwaddch(boardWin, row.y - 1, left + width - 1, ACS_URCORNER);
-        mvwaddch(boardWin, row.y + 1, left + width - 1, ACS_LRCORNER);
+        drawBorderCharSafe(boardWin, row.y - 1, left + width - 1, ACS_URCORNER);
+        drawBorderCharSafe(boardWin, row.y + 1, left + width - 1, ACS_LRCORNER);
     }
     if (hasColor) {
         wattroff(boardWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND) | A_DIM);
@@ -473,18 +466,18 @@ void drawClassicTreeGuides(WINDOW* boardWin, bool hasColor) {
     } else {
         wattron(boardWin, A_BOLD);
     }
-    mvwvline(boardWin, 3, 40, ACS_VLINE, 1);
-    mvwvline(boardWin, 5, 16, ACS_VLINE, 2);
-    mvwhline(boardWin, 6, 17, ACS_HLINE, 22);
-    mvwvline(boardWin, 5, 40, ACS_VLINE, 2);
-    mvwvline(boardWin, 8, 40, ACS_VLINE, 1);
-    mvwvline(boardWin, 11, 40, ACS_VLINE, 1);
-    mvwvline(boardWin, 14, 40, ACS_VLINE, 1);
-    mvwhline(boardWin, 15, 40, ACS_HLINE, 2);
-    mvwvline(boardWin, 15, 22, ACS_VLINE, 2);
-    mvwhline(boardWin, 18, 23, ACS_HLINE, 17);
-    mvwvline(boardWin, 18, 58, ACS_VLINE, 4);
-    mvwvline(boardWin, 23, 40, ACS_VLINE, 1);
+    drawBorderColumnSafe(boardWin, 3, 40, 1);
+    drawBorderColumnSafe(boardWin, 5, 16, 2);
+    drawBorderLineSafe(boardWin, 6, 17, 22);
+    drawBorderColumnSafe(boardWin, 5, 40, 2);
+    drawBorderColumnSafe(boardWin, 8, 40, 1);
+    drawBorderColumnSafe(boardWin, 11, 40, 1);
+    drawBorderColumnSafe(boardWin, 14, 40, 1);
+    drawBorderLineSafe(boardWin, 15, 40, 2);
+    drawBorderColumnSafe(boardWin, 15, 22, 2);
+    drawBorderLineSafe(boardWin, 18, 23, 17);
+    drawBorderColumnSafe(boardWin, 18, 58, 4);
+    drawBorderColumnSafe(boardWin, 23, 40, 1);
     if (hasColor) {
         wattroff(boardWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND) | A_BOLD);
     } else {
@@ -968,7 +961,7 @@ void Board::render(WINDOW* boardWin,
                    bool hasColor,
                    BoardViewMode viewMode) const {
     werase(boardWin);
-    box(boardWin, 0, 0);
+    drawBoxSafe(boardWin);
 
     if (players.empty()) {
         mvwprintw(boardWin, 1, 2, "Board view unavailable.");
@@ -983,8 +976,6 @@ void Board::render(WINDOW* boardWin,
     if (viewMode == BoardViewMode::ClassicFull) {
         const int maxY = getmaxy(boardWin);
         const int maxX = getmaxx(boardWin);
-        const std::string title = " Classic Full Board ";
-        mvwprintw(boardWin, 0, 3, "%s", clipText(title, std::max(0, maxX - 6)).c_str());
         const std::string statusLine =
             players[static_cast<std::size_t>(focusIndex)].name + " at Space " +
             std::to_string(centerTile) + " - " + getTileDisplayName(tileAt(centerTile));
@@ -1007,6 +998,7 @@ void Board::render(WINDOW* boardWin,
                       "%s",
                       clipText(statusLine, maxX - 4).c_str());
         }
+        drawBoxSafe(boardWin);
         wrefresh(boardWin);
         return;
     }
@@ -1017,32 +1009,24 @@ void Board::render(WINDOW* boardWin,
 
     const std::string title =
         " " + players[static_cast<std::size_t>(focusIndex)].name + "'s view ";
-    mvwprintw(boardWin, 0, 3, "%s", clipText(title, std::max(0, maxX - 6)).c_str());
+    mvwprintw(boardWin, 1, 3, "%s", clipText(title, std::max(0, maxX - 6)).c_str());
 
     const std::string statusLine =
         players[static_cast<std::size_t>(focusIndex)].name + " at Space " +
         std::to_string(centerTile) + " - " + getTileDisplayName(tileAt(centerTile));
-    mvwprintw(boardWin, 1, centeredX(1, maxX - 2, static_cast<int>(clipText(statusLine, maxX - 4).size())),
+    mvwprintw(boardWin, 2, centeredX(1, maxX - 2, static_cast<int>(clipText(statusLine, maxX - 4).size())),
               "%s", clipText(statusLine, maxX - 4).c_str());
 
     const int viewportWidth = (VIEW_COLS * TILE_W) + ((VIEW_COLS - 1) * TILE_GAP_X) + 2;
     const int viewportHeight = (VIEW_ROWS * TILE_H) + ((VIEW_ROWS - 1) * TILE_GAP_Y) + 2;
     const int viewportLeft = std::max(1, (maxX - viewportWidth) / 2);
-    const int viewportTop = 3;
-    const int viewportRight = viewportLeft + viewportWidth - 1;
+    const int viewportTop = 4;
     const int viewportBottom = std::min(maxY - 2, viewportTop + viewportHeight - 1);
 
     if (hasColor) {
         wattron(boardWin, COLOR_PAIR(8) | A_BOLD);
     }
-    mvwaddch(boardWin, viewportTop, viewportLeft, ACS_ULCORNER);
-    mvwhline(boardWin, viewportTop, viewportLeft + 1, ACS_HLINE, viewportWidth - 2);
-    mvwaddch(boardWin, viewportTop, viewportRight, ACS_URCORNER);
-    mvwvline(boardWin, viewportTop + 1, viewportLeft, ACS_VLINE, viewportHeight - 2);
-    mvwvline(boardWin, viewportTop + 1, viewportRight, ACS_VLINE, viewportHeight - 2);
-    mvwaddch(boardWin, viewportBottom, viewportLeft, ACS_LLCORNER);
-    mvwhline(boardWin, viewportBottom, viewportLeft + 1, ACS_HLINE, viewportWidth - 2);
-    mvwaddch(boardWin, viewportBottom, viewportRight, ACS_LRCORNER);
+    drawBoxAtSafe(boardWin, viewportTop, viewportLeft, viewportBottom - viewportTop + 1, viewportWidth);
     if (hasColor) {
         wattroff(boardWin, COLOR_PAIR(8) | A_BOLD);
     }

@@ -5,6 +5,26 @@
 #include <string>
 #include <vector>
 
+struct UiWindowBounds {
+    int height;
+    int width;
+    int y;
+    int x;
+};
+
+bool terminalIsAtLeast(int minHeight, int minWidth);
+void showTerminalSizeWarning(int minHeight, int minWidth, bool hasColor, bool waitForKey = true);
+bool calculateCenteredWindowBounds(int preferredHeight,
+                                   int preferredWidth,
+                                   int minHeight,
+                                   int minWidth,
+                                   UiWindowBounds& bounds);
+WINDOW* createCenteredWindow(int preferredHeight,
+                             int preferredWidth,
+                             int minHeight = 3,
+                             int minWidth = 12);
+void clearWindowInterior(WINDOW* win);
+
 void waitForEnterPrompt(WINDOW* win,
                         int y,
                         int x,

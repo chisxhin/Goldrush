@@ -78,6 +78,74 @@ void pauseForEnter() {
     std::getline(std::cin, ignored);
 }
 
+void destroyDebugWindows(WINDOW*& titleWin, WINDOW*& boardWin, WINDOW*& infoWin, WINDOW*& msgWin) {
+    if (msgWin) {
+        delwin(msgWin);
+        msgWin = nullptr;
+    }
+    if (infoWin) {
+        delwin(infoWin);
+        infoWin = nullptr;
+    }
+    if (boardWin) {
+        delwin(boardWin);
+        boardWin = nullptr;
+    }
+    if (titleWin) {
+        delwin(titleWin);
+        titleWin = nullptr;
+    }
+}
+
+bool debugLayoutFits(const UILayout& layout) {
+    int termH = 0;
+    int termW = 0;
+    getmaxyx(stdscr, termH, termW);
+    if (layout.originY + layout.totalHeight > termH ||
+        layout.originX + layout.totalWidth > termW) {
+        showTerminalSizeWarning(layout.totalHeight, layout.totalWidth, has_colors());
+        return false;
+    }
+    return true;
+}
+
+bool createDebugWindows(const UILayout& layout,
+                        WINDOW*& titleWin,
+                        WINDOW*& boardWin,
+                        WINDOW*& infoWin,
+                        WINDOW*& msgWin) {
+    titleWin = nullptr;
+    boardWin = nullptr;
+    infoWin = nullptr;
+    msgWin = nullptr;
+    if (!debugLayoutFits(layout)) {
+        return false;
+    }
+
+    titleWin = newwin(layout.headerHeight, layout.totalWidth, layout.originY, layout.originX);
+    boardWin = newwin(layout.boardHeight, layout.boardWidth, layout.originY + layout.headerHeight, layout.originX);
+    infoWin = newwin(layout.sidePanelHeight,
+                     layout.sidePanelWidth,
+                     layout.originY + layout.headerHeight,
+                     layout.originX + layout.boardWidth);
+    msgWin = newwin(layout.messageHeight,
+                    layout.totalWidth,
+                    layout.originY + layout.headerHeight + layout.boardHeight,
+                    layout.originX);
+    if (!titleWin || !boardWin || !infoWin || !msgWin) {
+        destroyDebugWindows(titleWin, boardWin, infoWin, msgWin);
+        showTerminalSizeWarning(layout.totalHeight, layout.totalWidth, has_colors());
+        return false;
+    }
+
+    apply_ui_background(titleWin);
+    apply_ui_background(boardWin);
+    apply_ui_background(infoWin);
+    apply_ui_background(msgWin);
+    keypad(msgWin, TRUE);
+    return true;
+}
+
 int readInt(const std::string& prompt, int minValue, int maxValue, int defaultValue) {
     while (true) {
         std::cout << prompt << " [" << defaultValue << "]: ";
@@ -335,22 +403,14 @@ void showBoardPreview(const std::string& eventTitle,
     const UILayout layout = calculateUILayout();
     Board board;
 
-    WINDOW* titleWin = newwin(layout.headerHeight, layout.totalWidth, layout.originY, layout.originX);
-    WINDOW* boardWin = newwin(layout.boardHeight, layout.boardWidth, layout.originY + layout.headerHeight, layout.originX);
-    WINDOW* infoWin = newwin(layout.sidePanelHeight,
-                             layout.sidePanelWidth,
-                             layout.originY + layout.headerHeight,
-                             layout.originX + layout.boardWidth);
-    WINDOW* msgWin = newwin(layout.messageHeight,
-                            layout.totalWidth,
-                            layout.originY + layout.headerHeight + layout.boardHeight,
-                            layout.originX);
-
-    apply_ui_background(titleWin);
-    apply_ui_background(boardWin);
-    apply_ui_background(infoWin);
-    apply_ui_background(msgWin);
-    keypad(msgWin, TRUE);
+    WINDOW* titleWin = nullptr;
+    WINDOW* boardWin = nullptr;
+    WINDOW* infoWin = nullptr;
+    WINDOW* msgWin = nullptr;
+    if (!createDebugWindows(layout, titleWin, boardWin, infoWin, msgWin)) {
+        destroy_game_ui();
+        return;
+    }
 
     const int safeCurrent = std::max(0, std::min(currentPlayerIndex, static_cast<int>(previewPlayers.size()) - 1));
     draw_title_banner_ui(titleWin);
@@ -364,10 +424,7 @@ void showBoardPreview(const std::string& eventTitle,
     drawEventMessage(msgWin, eventTitle, eventMessage);
     waitForEnterPrompt(msgWin, layout.messageHeight - 2, 2, "Press ENTER to continue...");
 
-    delwin(msgWin);
-    delwin(infoWin);
-    delwin(boardWin);
-    delwin(titleWin);
+    destroyDebugWindows(titleWin, boardWin, infoWin, msgWin);
     destroy_game_ui();
 }
 }
@@ -973,17 +1030,19 @@ void debugCurrentObjectiveBox() {
 void debugEventMessagePanel() {
     initialize_game_ui();
     const UILayout layout = calculateUILayout();
-    WINDOW* msgWin = newwin(layout.messageHeight,
-                            layout.totalWidth,
-                            layout.originY + layout.headerHeight + layout.boardHeight,
-                            layout.originX);
-    apply_ui_background(msgWin);
-    keypad(msgWin, TRUE);
+    WINDOW* titleWin = nullptr;
+    WINDOW* boardWin = nullptr;
+    WINDOW* infoWin = nullptr;
+    WINDOW* msgWin = nullptr;
+    if (!createDebugWindows(layout, titleWin, boardWin, infoWin, msgWin)) {
+        destroy_game_ui();
+        return;
+    }
     drawEventMessage(msgWin,
                      "Hangman Sidegame",
                      "Alex exited early. No payout awarded. This preview checks the more polished bottom event panel.");
     waitForEnterPrompt(msgWin, layout.messageHeight - 2, 2, "Press ENTER to continue...");
-    delwin(msgWin);
+    destroyDebugWindows(titleWin, boardWin, infoWin, msgWin);
     destroy_game_ui();
 }
 
@@ -1027,14 +1086,11 @@ void debugMinimapSupport() {
     std::vector<Player> players = makeBoardPreviewPlayers();
     players[0].tile = 64;
     players[1].tile = 80;
-    int h = 0;
-    int w = 0;
-    getmaxyx(stdscr, h, w);
-    WINDOW* popup = newwin(std::min(28, h - 2),
-                           std::min(58, w - 2),
-                           1,
-                           std::max(0, (w - std::min(58, w - 2)) / 2));
-    apply_ui_background(popup);
+    WINDOW* popup = createCenteredWindow(28, 58, 8, 40);
+    if (!popup) {
+        destroy_game_ui();
+        return;
+    }
     keypad(popup, TRUE);
     drawMinimapPanel(popup, board, players, 0);
     waitForEnterPrompt(popup, getmaxy(popup) - 2, 2, "Press ENTER to continue...");
@@ -1050,21 +1106,14 @@ void debugPopupOverFollowCamera() {
     std::vector<Player> players = makeBoardPreviewPlayers();
     players[0].tile = 47;
 
-    WINDOW* titleWin = newwin(layout.headerHeight, layout.totalWidth, layout.originY, layout.originX);
-    WINDOW* boardWin = newwin(layout.boardHeight, layout.boardWidth, layout.originY + layout.headerHeight, layout.originX);
-    WINDOW* infoWin = newwin(layout.sidePanelHeight,
-                             layout.sidePanelWidth,
-                             layout.originY + layout.headerHeight,
-                             layout.originX + layout.boardWidth);
-    WINDOW* msgWin = newwin(layout.messageHeight,
-                            layout.totalWidth,
-                            layout.originY + layout.headerHeight + layout.boardHeight,
-                            layout.originX);
-
-    apply_ui_background(titleWin);
-    apply_ui_background(boardWin);
-    apply_ui_background(infoWin);
-    apply_ui_background(msgWin);
+    WINDOW* titleWin = nullptr;
+    WINDOW* boardWin = nullptr;
+    WINDOW* infoWin = nullptr;
+    WINDOW* msgWin = nullptr;
+    if (!createDebugWindows(layout, titleWin, boardWin, infoWin, msgWin)) {
+        destroy_game_ui();
+        return;
+    }
 
     draw_title_banner_ui(titleWin);
     draw_board_ui(boardWin, board, players, 0, players[0].tile, BoardViewMode::FollowCamera);
@@ -1085,10 +1134,7 @@ void debugPopupOverFollowCamera() {
     drawEventMessage(msgWin, "Popup Closed", "The follow-camera board should not be duplicated or misaligned.");
     waitForEnterPrompt(msgWin, layout.messageHeight - 2, 2, "Press ENTER to continue...");
 
-    delwin(msgWin);
-    delwin(infoWin);
-    delwin(boardWin);
-    delwin(titleWin);
+    destroyDebugWindows(titleWin, boardWin, infoWin, msgWin);
     destroy_game_ui();
 }
 

@@ -1,6 +1,7 @@
 #include "timer_display.h"
 
 #include "ui.h"
+#include "ui_helpers.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -52,21 +53,21 @@ void drawCountdownTimer(WINDOW* win, int y, int x, double remainingSeconds, bool
 }
 
 void displayCountdownTimer(int seconds, bool hasColor) {
-    int h = 0;
-    int w = 0;
-    getmaxyx(stdscr, h, w);
-    const int popupH = 7;
-    const int popupW = 42;
-    WINDOW* popup = newwin(popupH,
-                           popupW,
-                           std::max(0, (h - popupH) / 2),
-                           std::max(0, (w - popupW) / 2));
-    apply_ui_background(popup);
+    int popupH = 7;
+    int popupW = 42;
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 5, 24);
+    if (!popup) {
+        showTerminalSizeWarning(5, 24, hasColor);
+        return;
+    }
+    getmaxyx(popup, popupH, popupW);
+    const int contentW = std::max(1, popupW - 4);
 
     for (int remaining = seconds; remaining >= 0; --remaining) {
         werase(popup);
-        box(popup, 0, 0);
-        mvwprintw(popup, 1, 2, "Countdown Timer Test");
+        drawBoxSafe(popup);
+        mvwprintw(popup, 1, 2, "%s",
+                  clipUiText("Countdown Timer Test", static_cast<std::size_t>(contentW)).c_str());
         drawCountdownTimer(popup, 3, 2, remaining, hasColor);
         wrefresh(popup);
         napms(remaining == 0 ? 700 : 1000);

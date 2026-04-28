@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra
-LIBS = -lncurses
+LIBS = -lncursesw
 FS_LIBS ?=
 
 CORE_OBJS = game.o board.o player.o ui.o rules.o \

@@ -124,30 +124,36 @@ void showCompletedGameHistoryScreen(bool hasColor) {
     int screenH = 0;
     int screenW = 0;
     getmaxyx(stdscr, screenH, screenW);
-    const int popupH = std::min(20, std::max(10, screenH - 2));
-    const int popupW = std::min(86, std::max(48, screenW - 2));
-    WINDOW* popup = newwin(popupH, popupW, (screenH - popupH) / 2, (screenW - popupW) / 2);
-    apply_ui_background(popup);
+    int popupH = std::min(20, std::max(10, screenH - 2));
+    int popupW = std::min(86, std::max(48, screenW - 2));
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 10, 48);
+    if (!popup) {
+        showTerminalSizeWarning(10, 48, hasColor);
+        return;
+    }
     keypad(popup, TRUE);
+    getmaxyx(popup, popupH, popupW);
+    const int contentW = std::max(1, popupW - 4);
 
     int selected = 0;
     while (true) {
         werase(popup);
-        box(popup, 0, 0);
+        drawBoxSafe(popup);
         if (hasColor) {
             wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
         }
-        mvwprintw(popup, 1, 2, "COMPLETED GAME HISTORY");
+        mvwprintw(popup, 1, 2, "%s", clipUiText("COMPLETED GAME HISTORY", static_cast<std::size_t>(contentW)).c_str());
         if (hasColor) {
             wattroff(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
         }
 
         if (!error.empty()) {
-            mvwprintw(popup, 3, 2, "%s", error.c_str());
+            mvwprintw(popup, 3, 2, "%s", clipUiText(error, static_cast<std::size_t>(contentW)).c_str());
         } else if (entries.empty()) {
-            mvwprintw(popup, 3, 2, "No completed games recorded yet.");
+            mvwprintw(popup, 3, 2, "%s",
+                      clipUiText("No completed games recorded yet.", static_cast<std::size_t>(contentW)).c_str());
         } else {
-            const int visible = popupH - 6;
+            const int visible = std::max(1, popupH - 6);
             const int start = std::max(0, selected - visible + 1);
             for (int i = 0; i < visible && start + i < static_cast<int>(entries.size()); ++i) {
                 const int index = start + i;
@@ -158,22 +164,24 @@ void showCompletedGameHistoryScreen(bool hasColor) {
                 if (index == selected) {
                     wattron(popup, A_REVERSE);
                 }
-                mvwprintw(popup, 3 + i, 2, "%-*s", popupW - 4,
-                          clipUiText(row.str(), static_cast<std::size_t>(popupW - 4)).c_str());
+                mvwprintw(popup, 3 + i, 2, "%-*s", contentW,
+                          clipUiText(row.str(), static_cast<std::size_t>(contentW)).c_str());
                 if (index == selected) {
                     wattroff(popup, A_REVERSE);
                 }
             }
             const CompletedGameEntry& entry = entries[static_cast<std::size_t>(selected)];
-            mvwprintw(popup, popupH - 4, 2, "Mode: %s | Rounds: %d | Game: %s",
-                      clipUiText(entry.mode, 16).c_str(),
-                      entry.rounds,
-                      clipUiText(entry.gameId, 22).c_str());
+            std::ostringstream detail;
+            detail << "Mode: " << entry.mode << " | Rounds: " << entry.rounds
+                   << " | Game: " << entry.gameId;
+            mvwprintw(popup, popupH - 4, 2, "%s",
+                      clipUiText(detail.str(), static_cast<std::size_t>(contentW)).c_str());
             mvwprintw(popup, popupH - 3, 2, "%s",
-                      clipUiText(entry.players, static_cast<std::size_t>(popupW - 4)).c_str());
+                      clipUiText(entry.players, static_cast<std::size_t>(contentW)).c_str());
         }
 
-        mvwprintw(popup, popupH - 2, 2, "Up/Down move  ESC back");
+        mvwprintw(popup, popupH - 2, 2, "%s",
+                  clipUiText("Up/Down move  ESC back", static_cast<std::size_t>(contentW)).c_str());
         wrefresh(popup);
         const int ch = wgetch(popup);
         if (isCancelKey(ch) || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {

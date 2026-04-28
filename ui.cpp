@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
-#include <clocale>
 #include <cstring>
+#include <locale.h>
 #include <set>
 #include <utility>
 #include <string>
@@ -220,16 +220,7 @@ void initGameColors() {
 void draw_menu_border(bool is_active, int x, int y, int width, int height) {
     if (!is_active) return;
     attron(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
-    mvaddch(y, x, ACS_ULCORNER);
-    mvhline(y, x + 1, ACS_HLINE, width - 2);
-    mvaddch(y, x + width - 1, ACS_URCORNER);
-    for (int row = 1; row < height - 1; ++row) {
-        mvaddch(y + row, x, ACS_VLINE);
-        mvaddch(y + row, x + width - 1, ACS_VLINE);
-    }
-    mvaddch(y + height - 1, x, ACS_LLCORNER);
-    mvhline(y + height - 1, x + 1, ACS_HLINE, width - 2);
-    mvaddch(y + height - 1, x + width - 1, ACS_LRCORNER);
+    drawBoxAtSafe(stdscr, y, x, height, width);
     attroff(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
 }
 
@@ -421,7 +412,7 @@ void drawMiniLine(WINDOW* panelWin, int y1, int x1, int y2, int x2) {
 }
 
 void initialize_game_ui() {
-    std::setlocale(LC_ALL, "");
+    setlocale(LC_ALL, "");
     initscr();
     cbreak();
     noecho();
@@ -442,6 +433,91 @@ void destroy_game_ui() {
 void apply_ui_background(WINDOW* window) {
     if (!window) return;
     wbkgd(window, COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
+}
+
+void drawBoxSafe(WINDOW* window) {
+    if (!window) {
+        return;
+    }
+    box(window, 0, 0);
+}
+
+void drawBorderLineSafe(WINDOW* window, int y, int x, int width) {
+    if (!window || width <= 0) {
+        return;
+    }
+    int maxY = 0;
+    int maxX = 0;
+    getmaxyx(window, maxY, maxX);
+    if (y < 0 || y >= maxY || x >= maxX) {
+        return;
+    }
+    const int startX = std::max(0, x);
+    const int endX = std::min(maxX - 1, x + width - 1);
+    if (endX < startX) {
+        return;
+    }
+    mvwhline(window, y, startX, ACS_HLINE, endX - startX + 1);
+}
+
+void drawBorderColumnSafe(WINDOW* window, int y, int x, int height) {
+    if (!window || height <= 0) {
+        return;
+    }
+    int maxY = 0;
+    int maxX = 0;
+    getmaxyx(window, maxY, maxX);
+    if (x < 0 || x >= maxX || y >= maxY) {
+        return;
+    }
+    const int startY = std::max(0, y);
+    const int endY = std::min(maxY - 1, y + height - 1);
+    if (endY < startY) {
+        return;
+    }
+    mvwvline(window, startY, x, ACS_VLINE, endY - startY + 1);
+}
+
+void drawBorderCharSafe(WINDOW* window, int y, int x, chtype ch) {
+    if (!window) {
+        return;
+    }
+    int maxY = 0;
+    int maxX = 0;
+    getmaxyx(window, maxY, maxX);
+    if (y < 0 || y >= maxY || x < 0 || x >= maxX) {
+        return;
+    }
+    mvwaddch(window, y, x, ch);
+}
+
+void drawBoxAtSafe(WINDOW* window, int y, int x, int height, int width) {
+    if (!window || height <= 0 || width <= 0) {
+        return;
+    }
+
+    const int top = y;
+    const int bottom = y + height - 1;
+    const int left = x;
+    const int right = x + width - 1;
+
+    if (height == 1) {
+        drawBorderLineSafe(window, top, left, width);
+        return;
+    }
+    if (width == 1) {
+        drawBorderColumnSafe(window, top, left, height);
+        return;
+    }
+
+    drawBorderCharSafe(window, top, left, ACS_ULCORNER);
+    drawBorderLineSafe(window, top, left + 1, width - 2);
+    drawBorderCharSafe(window, top, right, ACS_URCORNER);
+    drawBorderColumnSafe(window, top + 1, left, height - 2);
+    drawBorderColumnSafe(window, top + 1, right, height - 2);
+    drawBorderCharSafe(window, bottom, left, ACS_LLCORNER);
+    drawBorderLineSafe(window, bottom, left + 1, width - 2);
+    drawBorderCharSafe(window, bottom, right, ACS_LRCORNER);
 }
 
 int ui_player_color_pair(int playerIndex) {
@@ -491,13 +567,15 @@ void draw_title_banner_ui(WINDOW* titleWin) {
     int width = 0;
     getmaxyx(titleWin, height, width);
     werase(titleWin);
-    box(titleWin, 0, 0);
+    drawBoxSafe(titleWin);
     wattron(titleWin, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
-    mvwprintw(titleWin, 0, 2, " GOLDRUSH ");
     if (height < 8 || width < 70) {
         const std::string title = "GOLDRUSH";
         const int titleX = std::max(2, (width - static_cast<int>(title.size())) / 2);
-        mvwprintw(titleWin, std::min(1, height - 2), titleX, "%s", title.c_str());
+        if (height > 2) {
+            mvwprintw(titleWin, 1, titleX, "%s",
+                      clipPanelText(title, static_cast<std::size_t>(std::max(1, width - 4))).c_str());
+        }
         if (height >= 4) {
             const std::string subtitle = "Retire with the highest net worth";
             mvwprintw(titleWin,
@@ -578,7 +656,7 @@ void drawCurrentHintBox(WINDOW* win, const Board& board, const Player& player, c
     const int line3Y = framed ? 4 : 3;
 
     if (framed) {
-        box(win, 0, 0);
+        drawBoxSafe(win);
     }
     drawPanelHeader(win, headerY, "CURRENT GOAL");
     mvwprintw(win, line1Y, textX, "%s", clipPanelText("Reach retirement with the highest net worth.", static_cast<std::size_t>(std::max(8, width - textX - 1))).c_str());
@@ -730,7 +808,7 @@ void drawEventMessage(WINDOW* messageWin, const std::string& title, const std::s
     int width = 0;
     getmaxyx(messageWin, height, width);
     werase(messageWin);
-    box(messageWin, 0, 0);
+    drawBoxSafe(messageWin);
 
     wattron(messageWin, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
     const std::string clippedTitle = clipPanelText(title, static_cast<std::size_t>(std::max(0, width - 4)));
@@ -753,7 +831,7 @@ void drawMinimapPanel(WINDOW* panelWin,
                       const std::vector<Player>& players,
                       int currentPlayer) {
     werase(panelWin);
-    box(panelWin, 0, 0);
+    drawBoxSafe(panelWin);
 
     wattron(panelWin, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
     mvwprintw(panelWin, 1, 2, "MINIMAP");
@@ -787,8 +865,8 @@ void drawMinimapPanel(WINDOW* panelWin,
     const int mapBottom = mapTop + mapHeight;
 
     wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
-    mvwhline(panelWin, 2, 1, ACS_HLINE, separatorWidth);
-    mvwhline(panelWin, mapBottom + 1, 1, ACS_HLINE, separatorWidth);
+    drawBorderLineSafe(panelWin, 2, 1, separatorWidth);
+    drawBorderLineSafe(panelWin, mapBottom + 1, 1, separatorWidth);
     wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
 
     const std::vector<std::pair<int, int> > connections = minimapConnections(board);
@@ -900,7 +978,7 @@ void draw_sidebar_ui(WINDOW* panelWin,
     const int textWidth = std::max(12, panelWidth - 5);
 
     werase(panelWin);
-    box(panelWin, 0, 0);
+    drawBoxSafe(panelWin);
 
     if (!players.empty() && currentPlayer >= 0 && currentPlayer < static_cast<int>(players.size())) {
         drawPlayerPanel(panelWin, board, players, currentPlayer);
@@ -923,14 +1001,14 @@ void draw_sidebar_ui(WINDOW* panelWin,
 
     if (!historyLines.empty() && footerY > phaseStartY + static_cast<int>(players.size())) {
         wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
-        mvwhline(panelWin, footerY - 1, 1, ACS_HLINE, std::max(4, panelWidth - 2));
+        drawBorderLineSafe(panelWin, footerY - 1, 1, std::max(4, panelWidth - 2));
         wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
         drawPanelHeader(panelWin, footerY, "LATEST");
         const std::string latest = clipPanelText(historyLines.front(), static_cast<std::size_t>(std::max(8, panelWidth - 5)));
         mvwprintw(panelWin, footerY + 1, 2, "%s", latest.c_str());
     } else if (footerY > phaseStartY + static_cast<int>(players.size())) {
         wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
-        mvwhline(panelWin, footerY - 1, 1, ACS_HLINE, std::max(4, panelWidth - 2));
+        drawBorderLineSafe(panelWin, footerY - 1, 1, std::max(4, panelWidth - 2));
         wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
         mvwprintw(panelWin, footerY, 2, "%-.34s", rules.editionName.c_str());
         mvwprintw(panelWin, footerY + 1, 2, "TAB: scores  G: guide  K: controls");
@@ -949,7 +1027,7 @@ void draw_message_ui(WINDOW* msgWin, const std::string& line1, const std::string
     int width = 0;
     getmaxyx(msgWin, height, width);
     werase(msgWin);
-    box(msgWin, 0, 0);
+    drawBoxSafe(msgWin);
 
     wattron(msgWin, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
     mvwprintw(msgWin, 1, 2, "%s",
@@ -975,6 +1053,7 @@ int selector_component(char* prompt_text,
                        int y_offset,
                        int width,
                        int height) {
+    (void)y_offset;
     auto clipToWidth = [](const char* text, int maxWidth) -> std::string {
         if (!text || maxWidth <= 0) {
             return "";
@@ -986,15 +1065,27 @@ int selector_component(char* prompt_text,
         return value.substr(0, static_cast<std::size_t>(maxWidth));
     };
 
+    if (number_of_options <= 0 || !option_texts || !option_values) {
+        return default_value;
+    }
+
     int termHeight = 0;
     int termWidth = 0;
     getmaxyx(stdscr, termHeight, termWidth);
-    const int maxBoxWidth = std::max(8, termWidth - 4);
-    const int boxWidth = std::max(8, std::min(width, maxBoxWidth));
-    const int maxBoxHeight = std::max(3, termHeight - 6);
-    const int boxHeight = std::max(3, std::min(height, maxBoxHeight));
-    const int x = std::max(1, (termWidth - boxWidth) / 2);
-    const int y = std::max(1, termHeight - boxHeight - 4 + y_offset);
+    int desiredWidth = std::max(width, prompt_text ? static_cast<int>(std::strlen(prompt_text)) : 0);
+    for (int i = 0; i < number_of_options; ++i) {
+        desiredWidth = std::max(desiredWidth, option_texts[i] ? static_cast<int>(std::strlen(option_texts[i])) : 0);
+    }
+    desiredWidth = std::max(12, desiredWidth);
+    const int frameWidth = std::min(std::max(20, desiredWidth + 4), std::max(20, termWidth - 2));
+    const int frameHeight = std::min(std::max(5, height + 4), std::max(5, termHeight - 2));
+
+    WINDOW* popup = createCenteredWindow(frameHeight, frameWidth, 5, 20);
+    if (!popup) {
+        showTerminalSizeWarning(5, 20, has_colors());
+        return default_value;
+    }
+    keypad(popup, TRUE);
 
     int chosen_option_value = default_value;
     int highlighted_option = 0;
@@ -1006,39 +1097,51 @@ int selector_component(char* prompt_text,
         }
     }
 
+    int topOption = 0;
     while (true) {
-        attron(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
-        mvaddch(y - 1, x - 2, ACS_ULCORNER);
-        mvhline(y - 1, x - 1, ACS_HLINE, boxWidth + 2);
-        mvaddch(y - 1, x + boxWidth + 1, ACS_URCORNER);
-        for (int row = 0; row < boxHeight; ++row) {
-            mvaddch(y + row, x - 2, ACS_VLINE);
-            mvaddch(y + row, x + boxWidth + 1, ACS_VLINE);
+        int popupH = 0;
+        int popupW = 0;
+        getmaxyx(popup, popupH, popupW);
+        const int contentWidth = std::max(1, popupW - 4);
+        const int visibleOptions = std::max(1, popupH - 4);
+        if (highlighted_option < topOption) {
+            topOption = highlighted_option;
+        } else if (highlighted_option >= topOption + visibleOptions) {
+            topOption = highlighted_option - visibleOptions + 1;
         }
-        mvaddch(y + boxHeight, x - 2, ACS_LLCORNER);
-        mvhline(y + boxHeight, x - 1, ACS_HLINE, boxWidth + 2);
-        mvaddch(y + boxHeight, x + boxWidth + 1, ACS_LRCORNER);
-        const std::string clippedPrompt = clipToWidth(prompt_text, boxWidth);
-        mvprintw(y, x + std::max(0, (boxWidth - static_cast<int>(clippedPrompt.size())) / 2), "%s", clippedPrompt.c_str());
-        attroff(COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
 
-        for (int i = 0; i < number_of_options; ++i) {
-            const int optionY = y + 1 + i;
-            if (optionY >= y + boxHeight) {
+        werase(popup);
+        drawBoxSafe(popup);
+        wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
+        const std::string clippedPrompt = clipToWidth(prompt_text, contentWidth);
+        mvwprintw(popup,
+                  1,
+                  2 + std::max(0, (contentWidth - static_cast<int>(clippedPrompt.size())) / 2),
+                  "%s",
+                  clippedPrompt.c_str());
+        wattroff(popup, COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
+
+        for (int row = 0; row < visibleOptions; ++row) {
+            const int optionIndex = topOption + row;
+            if (optionIndex >= number_of_options) {
                 break;
             }
-            if (i == highlighted_option) {
-                attron(A_REVERSE | A_BOLD);
+            if (optionIndex == highlighted_option) {
+                wattron(popup, A_REVERSE | A_BOLD);
             }
-            const std::string clippedOption = clipToWidth(option_texts[i], boxWidth);
-            mvprintw(optionY, x, "%-*s", boxWidth, clippedOption.c_str());
-            if (i == highlighted_option) {
-                attroff(A_REVERSE | A_BOLD);
+            const std::string clippedOption = clipToWidth(option_texts[optionIndex], contentWidth);
+            mvwprintw(popup, 2 + row, 2, "%-*s", contentWidth, clippedOption.c_str());
+            if (optionIndex == highlighted_option) {
+                wattroff(popup, A_REVERSE | A_BOLD);
             }
         }
 
-        refresh();
-        const int input_character = getch();
+        if (number_of_options > visibleOptions) {
+            mvwprintw(popup, popupH - 2, 2, "Up/Down scroll  Enter select");
+        }
+
+        wrefresh(popup);
+        const int input_character = wgetch(popup);
         if (input_character == KEY_UP) {
             highlighted_option = highlighted_option == 0 ? number_of_options - 1 : highlighted_option - 1;
         } else if (input_character == KEY_DOWN) {
@@ -1046,9 +1149,14 @@ int selector_component(char* prompt_text,
         } else if (input_character == '\n' || input_character == '\r' || input_character == KEY_ENTER) {
             chosen_option_value = option_values[highlighted_option];
             break;
+        } else if (input_character == 27) {
+            break;
         }
     }
 
+    delwin(popup);
+    touchwin(stdscr);
+    refresh();
     return chosen_option_value;
 }
 

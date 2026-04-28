@@ -1,4 +1,5 @@
 #include <ncurses.h>
+#include <locale.h>
 
 // Copy just the color constants from ui.h
 enum GoldrushUiColorPair {
@@ -20,6 +21,7 @@ enum GoldrushUiColorPair {
 };
 
 void initialize_game_ui() {
+    setlocale(LC_ALL, "");
     initscr();
     cbreak();
     noecho();

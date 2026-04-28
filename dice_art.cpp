@@ -29,31 +29,37 @@ void showDiceRollAnimation(const std::string& title, int roll, bool hasColor) {
     int screenH = 0;
     int screenW = 0;
     getmaxyx(stdscr, screenH, screenW);
-    const int popupW = std::min(42, std::max(28, screenW - 4));
-    const int popupH = 13;
-    WINDOW* popup = newwin(popupH,
-                           popupW,
-                           std::max(0, (screenH - popupH) / 2),
-                           std::max(0, (screenW - popupW) / 2));
-    apply_ui_background(popup);
+    (void)screenH;
+    int popupW = std::min(42, std::max(28, screenW - 4));
+    int popupH = 13;
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 13, 28);
+    if (!popup) {
+        showTerminalSizeWarning(13, 28, hasColor);
+        return;
+    }
     keypad(popup, TRUE);
+    getmaxyx(popup, popupH, popupW);
+    const int contentW = std::max(1, popupW - 4);
 
     const std::vector<std::string> face = getAsciiDiceFace(roll);
     for (int frame = 0; frame < 4; ++frame) {
         werase(popup);
-        box(popup, 0, 0);
+        drawBoxSafe(popup);
         if (hasColor) {
             wattron(popup, COLOR_PAIR(frame % 2 == 0 ? GOLDRUSH_GOLD_SAND : GOLDRUSH_PLAYER_TWO) | A_BOLD);
         }
-        mvwprintw(popup, 1, std::max(2, (popupW - static_cast<int>(title.size())) / 2), "%s", title.c_str());
+        const std::string clippedTitle = clipUiText(title, static_cast<std::size_t>(contentW));
+        mvwprintw(popup, 1, 2 + std::max(0, (contentW - static_cast<int>(clippedTitle.size())) / 2),
+                  "%s", clippedTitle.c_str());
         for (std::size_t i = 0; i < face.size(); ++i) {
+            const std::string line = clipUiText(face[i], static_cast<std::size_t>(contentW));
             mvwprintw(popup,
                       3 + static_cast<int>(i),
-                      std::max(2, (popupW - static_cast<int>(face[i].size())) / 2),
+                      2 + std::max(0, (contentW - static_cast<int>(line.size())) / 2),
                       "%s",
-                      face[i].c_str());
+                      line.c_str());
         }
-        mvwprintw(popup, 9, std::max(2, (popupW - 1) / 2), "%d", roll);
+        mvwprintw(popup, 9, 2 + std::max(0, (contentW - 1) / 2), "%d", roll);
         if (hasColor) {
             wattroff(popup, COLOR_PAIR(frame % 2 == 0 ? GOLDRUSH_GOLD_SAND : GOLDRUSH_PLAYER_TWO) | A_BOLD);
         }
@@ -61,9 +67,10 @@ void showDiceRollAnimation(const std::string& title, int roll, bool hasColor) {
         napms(150);
     }
 
-    mvwprintw(popup, popupH - 2, 2, "Press ENTER to continue...");
+    mvwprintw(popup, popupH - 2, 2, "%s",
+              clipUiText("Press ENTER to continue...", static_cast<std::size_t>(contentW)).c_str());
     wrefresh(popup);
-    waitForEnterPrompt(popup, popupH - 2, 2, "Press ENTER to continue...");
+    waitForEnterPrompt(popup, popupH - 2, 2, "");
     delwin(popup);
     touchwin(stdscr);
     refresh();

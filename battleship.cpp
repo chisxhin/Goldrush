@@ -136,8 +136,18 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
     int screenH = 0;
     int screenW = 0;
     getmaxyx(stdscr, screenH, screenW);
+    if (!terminalIsAtLeast(37, 90)) {
+        showTerminalSizeWarning(37, 90, hasColor);
+        result.abandoned = true;
+        return result;
+    }
 
     WINDOW* overlay = newwin(screenH, screenW, 0, 0);
+    if (!overlay) {
+        showTerminalSizeWarning(37, 90, hasColor);
+        result.abandoned = true;
+        return result;
+    }
     keypad(overlay, TRUE);
     nodelay(overlay, TRUE);
     wbkgd(overlay, COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
@@ -210,14 +220,7 @@ BattleshipMinigameResult playBattleshipMinigame(const std::string& playerName, b
         if (hasColor) {
             wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
         }
-        mvwhline(overlay, arenaTop, arenaLeft, ACS_HLINE, arenaWidth);
-        mvwhline(overlay, arenaBottom, arenaLeft, ACS_HLINE, arenaWidth);
-        mvwvline(overlay, arenaTop, arenaLeft, ACS_VLINE, arenaHeight);
-        mvwvline(overlay, arenaTop, arenaRight, ACS_VLINE, arenaHeight);
-        mvwaddch(overlay, arenaTop, arenaLeft, ACS_ULCORNER);
-        mvwaddch(overlay, arenaTop, arenaRight, ACS_URCORNER);
-        mvwaddch(overlay, arenaBottom, arenaLeft, ACS_LLCORNER);
-        mvwaddch(overlay, arenaBottom, arenaRight, ACS_LRCORNER);
+        drawBoxAtSafe(overlay, arenaTop, arenaLeft, arenaHeight, arenaWidth);
         if (hasColor) {
             wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
         }

@@ -211,18 +211,7 @@ void drawCell(WINDOW* win,
         wattron(win, A_REVERSE);
     }
 
-    for (int i = 0; i < CELL_WIDTH; ++i) {
-        mvwaddch(win, y, x + i, ACS_HLINE);
-        mvwaddch(win, y + CELL_HEIGHT - 1, x + i, ACS_HLINE);
-    }
-    for (int i = 0; i < CELL_HEIGHT; ++i) {
-        mvwaddch(win, y + i, x, ACS_VLINE);
-        mvwaddch(win, y + i, x + CELL_WIDTH - 1, ACS_VLINE);
-    }
-    mvwaddch(win, y, x, ACS_ULCORNER);
-    mvwaddch(win, y, x + CELL_WIDTH - 1, ACS_URCORNER);
-    mvwaddch(win, y + CELL_HEIGHT - 1, x, ACS_LLCORNER);
-    mvwaddch(win, y + CELL_HEIGHT - 1, x + CELL_WIDTH - 1, ACS_LRCORNER);
+    drawBoxAtSafe(win, y, x, CELL_HEIGHT, CELL_WIDTH);
 
     char content = '.';
     if (revealBombs && cell.hasBomb) {
@@ -300,7 +289,18 @@ MinesweeperResult playMinesweeperMinigame(const std::string& playerName, bool ha
                          "Each safe tile pays $100. One bomb ends the run.",
                          hasColor);
 
+    if (!terminalIsAtLeast(37, 76)) {
+        showTerminalSizeWarning(37, 76, hasColor);
+        result.abandoned = true;
+        return result;
+    }
+
     WINDOW* overlay = newwin(0, 0, 0, 0);
+    if (!overlay) {
+        showTerminalSizeWarning(37, 76, hasColor);
+        result.abandoned = true;
+        return result;
+    }
     keypad(overlay, TRUE);
     nodelay(overlay, TRUE);
     wbkgd(overlay, COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
@@ -331,7 +331,6 @@ MinesweeperResult playMinesweeperMinigame(const std::string& playerName, bool ha
         const int arenaHeight = 26;
         const int arenaLeft = (screenW - arenaWidth) / 2;
         const int arenaTop = 9;
-        const int arenaRight = arenaLeft + arenaWidth - 1;
         const int arenaBottom = arenaTop + arenaHeight - 1;
 
         drawAsciiTitle(overlay, screenW, hasColor);
@@ -358,14 +357,7 @@ MinesweeperResult playMinesweeperMinigame(const std::string& playerName, bool ha
         if (hasColor) {
             wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
         }
-        mvwhline(overlay, arenaTop, arenaLeft, ACS_HLINE, arenaWidth);
-        mvwhline(overlay, arenaBottom, arenaLeft, ACS_HLINE, arenaWidth);
-        mvwvline(overlay, arenaTop, arenaLeft, ACS_VLINE, arenaHeight);
-        mvwvline(overlay, arenaTop, arenaRight, ACS_VLINE, arenaHeight);
-        mvwaddch(overlay, arenaTop, arenaLeft, ACS_ULCORNER);
-        mvwaddch(overlay, arenaTop, arenaRight, ACS_URCORNER);
-        mvwaddch(overlay, arenaBottom, arenaLeft, ACS_LLCORNER);
-        mvwaddch(overlay, arenaBottom, arenaRight, ACS_LRCORNER);
+        drawBoxAtSafe(overlay, arenaTop, arenaLeft, arenaHeight, arenaWidth);
         if (hasColor) {
             wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
         }

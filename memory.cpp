@@ -72,18 +72,7 @@ void drawCell(WINDOW* win, int y, int x, const std::string& symbol, bool isRevea
         wattron(win, A_REVERSE);
     }
 
-    for (int i = 0; i < CELL_WIDTH; ++i) {
-        mvwaddch(win, y, x + i, ACS_HLINE);
-        mvwaddch(win, y + CELL_HEIGHT - 1, x + i, ACS_HLINE);
-    }
-    for (int i = 0; i < CELL_HEIGHT; ++i) {
-        mvwaddch(win, y + i, x, ACS_VLINE);
-        mvwaddch(win, y + i, x + CELL_WIDTH - 1, ACS_VLINE);
-    }
-    mvwaddch(win, y, x, ACS_ULCORNER);
-    mvwaddch(win, y, x + CELL_WIDTH - 1, ACS_URCORNER);
-    mvwaddch(win, y + CELL_HEIGHT - 1, x, ACS_LLCORNER);
-    mvwaddch(win, y + CELL_HEIGHT - 1, x + CELL_WIDTH - 1, ACS_LRCORNER);
+    drawBoxAtSafe(win, y, x, CELL_HEIGHT, CELL_WIDTH);
 
     for (int innerX = 1; innerX < CELL_WIDTH - 1; ++innerX) {
         mvwaddch(win, y + 1, x + innerX, ' ');
@@ -144,8 +133,19 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
                          "Match all 8 pairs before running out of lives.",
                          "Each pair pays $100. Clearing the board adds a $200 bonus.",
                          hasColor);
+
+    if (!terminalIsAtLeast(31, 74)) {
+        showTerminalSizeWarning(31, 74, hasColor);
+        result.abandoned = true;
+        return result;
+    }
     
     WINDOW* overlay = newwin(0, 0, 0, 0);
+    if (!overlay) {
+        showTerminalSizeWarning(31, 74, hasColor);
+        result.abandoned = true;
+        return result;
+    }
     keypad(overlay, TRUE);
 
     std::vector<Cell> grid(TOTAL_CELLS);
@@ -185,7 +185,6 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
         const int arenaHeight = 24;
         const int arenaLeft = (screenW - arenaWidth) / 2;
         const int arenaTop = 7;
-        const int arenaRight = arenaLeft + arenaWidth - 1;
         const int arenaBottom = arenaTop + arenaHeight - 1;
         
         drawAsciiTitle(overlay, screenW, hasColor);
@@ -193,14 +192,7 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
         if (hasColor) {
             wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
         }
-        mvwhline(overlay, arenaTop, arenaLeft, ACS_HLINE, arenaWidth);
-        mvwhline(overlay, arenaBottom, arenaLeft, ACS_HLINE, arenaWidth);
-        mvwvline(overlay, arenaTop, arenaLeft, ACS_VLINE, arenaHeight);
-        mvwvline(overlay, arenaTop, arenaRight, ACS_VLINE, arenaHeight);
-        mvwaddch(overlay, arenaTop, arenaLeft, ACS_ULCORNER);
-        mvwaddch(overlay, arenaTop, arenaRight, ACS_URCORNER);
-        mvwaddch(overlay, arenaBottom, arenaLeft, ACS_LLCORNER);
-        mvwaddch(overlay, arenaBottom, arenaRight, ACS_LRCORNER);
+        drawBoxAtSafe(overlay, arenaTop, arenaLeft, arenaHeight, arenaWidth);
         if (hasColor) {
             wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
         }
@@ -354,22 +346,13 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
     const int arenaHeight = 24;
     const int arenaLeft = (screenW - arenaWidth) / 2;
     const int arenaTop = 2;
-    const int arenaRight = arenaLeft + arenaWidth - 1;
-    const int arenaBottom = arenaTop + arenaHeight - 1;
     
     werase(overlay);
     if (hasColor) {
         wbkgd(overlay, COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
         wattron(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
     }
-    mvwhline(overlay, arenaTop, arenaLeft, ACS_HLINE, arenaWidth);
-    mvwhline(overlay, arenaBottom, arenaLeft, ACS_HLINE, arenaWidth);
-    mvwvline(overlay, arenaTop, arenaLeft, ACS_VLINE, arenaHeight);
-    mvwvline(overlay, arenaTop, arenaRight, ACS_VLINE, arenaHeight);
-    mvwaddch(overlay, arenaTop, arenaLeft, ACS_ULCORNER);
-    mvwaddch(overlay, arenaTop, arenaRight, ACS_URCORNER);
-    mvwaddch(overlay, arenaBottom, arenaLeft, ACS_LLCORNER);
-    mvwaddch(overlay, arenaBottom, arenaRight, ACS_LRCORNER);
+    drawBoxAtSafe(overlay, arenaTop, arenaLeft, arenaHeight, arenaWidth);
     if (hasColor) {
         wattroff(overlay, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
     }

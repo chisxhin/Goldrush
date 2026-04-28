@@ -327,7 +327,18 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
                          "Each revealed letter slot pays $100. Exiting early pays nothing.",
                          hasColor);
 
+    if (!terminalIsAtLeast(37, 90)) {
+        showTerminalSizeWarning(37, 90, hasColor);
+        res.abandoned = true;
+        return res;
+    }
+
     WINDOW* win = newwin(0, 0, 0, 0);
+    if (!win) {
+        showTerminalSizeWarning(37, 90, hasColor);
+        res.abandoned = true;
+        return res;
+    }
     keypad(win, TRUE);
     nodelay(win, FALSE);
 
@@ -351,7 +362,6 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
         const int arenaHeight = 28;
         const int arenaLeft = (w - arenaWidth) / 2;
         const int arenaTop = 9;
-        const int arenaRight = arenaLeft + arenaWidth - 1;
         const int arenaBottom = arenaTop + arenaHeight - 1;
         const int arenaCenterY = arenaTop + arenaHeight / 2;
 
@@ -373,14 +383,7 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
         if (hasColor) {
             wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
         }
-        mvwhline(win, arenaTop, arenaLeft, ACS_HLINE, arenaWidth);
-        mvwhline(win, arenaBottom, arenaLeft, ACS_HLINE, arenaWidth);
-        mvwvline(win, arenaTop, arenaLeft, ACS_VLINE, arenaHeight);
-        mvwvline(win, arenaTop, arenaRight, ACS_VLINE, arenaHeight);
-        mvwaddch(win, arenaTop, arenaLeft, ACS_ULCORNER);
-        mvwaddch(win, arenaTop, arenaRight, ACS_URCORNER);
-        mvwaddch(win, arenaBottom, arenaLeft, ACS_LLCORNER);
-        mvwaddch(win, arenaBottom, arenaRight, ACS_LRCORNER);
+        drawBoxAtSafe(win, arenaTop, arenaLeft, arenaHeight, arenaWidth);
         if (hasColor) {
             wattroff(win, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
         }
@@ -419,14 +422,7 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
                 wbkgd(win, COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
                 wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
             }
-            mvwhline(win, arenaTop, arenaLeft, ACS_HLINE, arenaWidth);
-            mvwhline(win, arenaBottom, arenaLeft, ACS_HLINE, arenaWidth);
-            mvwvline(win, arenaTop, arenaLeft, ACS_VLINE, arenaHeight);
-            mvwvline(win, arenaTop, arenaRight, ACS_VLINE, arenaHeight);
-            mvwaddch(win, arenaTop, arenaLeft, ACS_ULCORNER);
-            mvwaddch(win, arenaTop, arenaRight, ACS_URCORNER);
-            mvwaddch(win, arenaBottom, arenaLeft, ACS_LLCORNER);
-            mvwaddch(win, arenaBottom, arenaRight, ACS_LRCORNER);
+            drawBoxAtSafe(win, arenaTop, arenaLeft, arenaHeight, arenaWidth);
             if (hasColor) {
                 wattroff(win, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
                 wattron(win, COLOR_PAIR(GOLDRUSH_BLACK_FOREST) | A_BOLD);
@@ -472,14 +468,7 @@ HangmanResult playHangmanMinigame(const std::string& playerName, bool hasColor) 
                 wbkgd(win, COLOR_PAIR(GOLDRUSH_GOLD_BLACK));
                 wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
             }
-            mvwhline(win, arenaTop, arenaLeft, ACS_HLINE, arenaWidth);
-            mvwhline(win, arenaBottom, arenaLeft, ACS_HLINE, arenaWidth);
-            mvwvline(win, arenaTop, arenaLeft, ACS_VLINE, arenaHeight);
-            mvwvline(win, arenaTop, arenaRight, ACS_VLINE, arenaHeight);
-            mvwaddch(win, arenaTop, arenaLeft, ACS_ULCORNER);
-            mvwaddch(win, arenaTop, arenaRight, ACS_URCORNER);
-            mvwaddch(win, arenaBottom, arenaLeft, ACS_LLCORNER);
-            mvwaddch(win, arenaBottom, arenaRight, ACS_LRCORNER);
+            drawBoxAtSafe(win, arenaTop, arenaLeft, arenaHeight, arenaWidth);
             if (hasColor) {
                 wattroff(win, COLOR_PAIR(GOLDRUSH_GOLD_FOREST) | A_BOLD);
                 wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_TERRA) | A_BOLD);

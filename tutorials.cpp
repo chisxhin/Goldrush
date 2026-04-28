@@ -13,11 +13,11 @@ WINDOW* centeredPopup(int height, int width) {
     getmaxyx(stdscr, screenH, screenW);
     const int popupH = std::min(height, std::max(8, screenH - 2));
     const int popupW = std::min(width, std::max(40, screenW - 2));
-    WINDOW* popup = newwin(popupH,
-                           popupW,
-                           std::max(0, (screenH - popupH) / 2),
-                           std::max(0, (screenW - popupW) / 2));
-    apply_ui_background(popup);
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 8, 40);
+    if (!popup) {
+        showTerminalSizeWarning(8, 40, has_colors());
+        return nullptr;
+    }
     keypad(popup, TRUE);
     return popup;
 }
@@ -27,10 +27,11 @@ void drawCentered(WINDOW* win, int y, const std::string& text, int attrs = A_NOR
     int width = 0;
     getmaxyx(win, height, width);
     (void)height;
+    const std::string clipped = clipUiText(text, static_cast<std::size_t>(std::max(1, width - 2)));
     if (attrs != A_NORMAL) {
         wattron(win, attrs);
     }
-    mvwprintw(win, y, std::max(1, (width - static_cast<int>(text.size())) / 2), "%s", text.c_str());
+    mvwprintw(win, y, std::max(1, (width - static_cast<int>(clipped.size())) / 2), "%s", clipped.c_str());
     if (attrs != A_NORMAL) {
         wattroff(win, attrs);
     }
@@ -136,6 +137,9 @@ void showPagedGuide(const std::string& title,
                     const std::vector<std::vector<std::string> >& pages,
                     bool hasColor) {
     WINDOW* popup = centeredPopup(20, 84);
+    if (!popup) {
+        return;
+    }
     const int pageCount = std::max(1, static_cast<int>(pages.size()));
 
     for (int page = 0; page < pageCount;) {
@@ -143,7 +147,7 @@ void showPagedGuide(const std::string& title,
         int width = 0;
         getmaxyx(popup, height, width);
         werase(popup);
-        box(popup, 0, 0);
+        drawBoxSafe(popup);
         if (hasColor) {
             wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
         }
@@ -163,7 +167,8 @@ void showPagedGuide(const std::string& title,
                                  static_cast<std::size_t>(std::max(8, width - 4))).c_str());
         }
 
-        mvwprintw(popup, height - 2, 2, "ENTER next  ESC back");
+        mvwprintw(popup, height - 2, 2, "%s",
+                  clipUiText("ENTER next  ESC back", static_cast<std::size_t>(std::max(1, width - 4))).c_str());
         wrefresh(popup);
         const int ch = wgetch(popup);
         if (isCancelKey(ch)) {
@@ -284,8 +289,15 @@ void showFullGuide(const Board& board, const RuleSet& rules, bool sabotageUnlock
 
 bool showQuitConfirmation(bool hasColor) {
     WINDOW* popup = centeredPopup(10, 56);
+    if (!popup) {
+        return false;
+    }
     werase(popup);
-    box(popup, 0, 0);
+    drawBoxSafe(popup);
+    int height = 0;
+    int width = 0;
+    getmaxyx(popup, height, width);
+    const int contentW = std::max(1, width - 4);
     if (hasColor) {
         wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_TERRA) | A_BOLD);
     }
@@ -293,9 +305,12 @@ bool showQuitConfirmation(bool hasColor) {
     if (hasColor) {
         wattroff(popup, COLOR_PAIR(GOLDRUSH_GOLD_TERRA) | A_BOLD);
     }
-    mvwprintw(popup, 3, 2, "Are you sure you want to quit?");
-    mvwprintw(popup, 6, 2, "Press Enter to quit.");
-    mvwprintw(popup, 7, 2, "Press ESC to go back.");
+    mvwprintw(popup, 3, 2, "%s",
+              clipUiText("Are you sure you want to quit?", static_cast<std::size_t>(contentW)).c_str());
+    mvwprintw(popup, height - 4, 2, "%s",
+              clipUiText("Press Enter to quit.", static_cast<std::size_t>(contentW)).c_str());
+    mvwprintw(popup, height - 3, 2, "%s",
+              clipUiText("Press ESC to go back.", static_cast<std::size_t>(contentW)).c_str());
     wrefresh(popup);
 
     while (true) {
@@ -320,9 +335,12 @@ void showSabotageUnlockAnimation(bool hasColor) {
     art.push_back("|____/_/   \\_\\____/ \\___/ |_/_/   \\_\\____|_____|");
 
     WINDOW* popup = centeredPopup(15, 72);
+    if (!popup) {
+        return;
+    }
     for (int frame = 0; frame < 6; ++frame) {
         werase(popup);
-        box(popup, 0, 0);
+        drawBoxSafe(popup);
         const int colorPair = frame % 2 == 0 ? GOLDRUSH_GOLD_TERRA : GOLDRUSH_GOLD_SAND;
         if (hasColor) {
             wattron(popup, COLOR_PAIR(colorPair) | A_BOLD);
@@ -337,9 +355,14 @@ void showSabotageUnlockAnimation(bool hasColor) {
         wrefresh(popup);
         napms(180);
     }
-    mvwprintw(popup, 13, 2, "Press ENTER to continue...");
+    int height = 0;
+    int width = 0;
+    getmaxyx(popup, height, width);
+    mvwprintw(popup, height - 2, 2, "%s",
+              clipUiText("Press ENTER to continue...",
+                         static_cast<std::size_t>(std::max(1, width - 4))).c_str());
     wrefresh(popup);
-    waitForEnterPrompt(popup, 13, 2, "Press ENTER to continue...");
+    waitForEnterPrompt(popup, height - 2, 2, "");
     delwin(popup);
 }
 
