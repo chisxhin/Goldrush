@@ -23,9 +23,8 @@ UILayout calculateUILayout(int termHeight, int termWidth) {
         getmaxyx(stdscr, termHeight, termWidth);
     }
 
-    const int fullWidth = FULL_BOARD_WIDTH + FULL_SIDE_PANEL_WIDTH;
     const int fullHeight = FULL_HEADER_HEIGHT + FULL_BOARD_HEIGHT + FULL_MESSAGE_HEIGHT;
-    const bool useCompact = termWidth < fullWidth || termHeight < fullHeight;
+    const bool useCompact = termHeight < fullHeight;
 
     UILayout layout;
     layout.compact = useCompact;
@@ -38,7 +37,7 @@ UILayout calculateUILayout(int termHeight, int termWidth) {
     layout.totalWidth = layout.boardWidth + layout.sidePanelWidth;
     layout.totalHeight = layout.headerHeight + layout.boardHeight + layout.messageHeight;
     layout.originX = std::max(0, (termWidth - layout.totalWidth) / 2);
-    layout.originY = std::max(0, (termHeight - layout.totalHeight) / 2);
+    layout.originY = (termHeight > layout.totalHeight) ? 1 : 0;
     return layout;
 }
 

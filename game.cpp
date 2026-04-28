@@ -1039,16 +1039,11 @@ void Game::showCpuThinking(int playerIndex, const std::string& action) const {
     }
 
     const Player& player = players[static_cast<std::size_t>(playerIndex)];
-    std::vector<std::string> lines;
-    lines.push_back(player.name + " is thinking...");
-    lines.push_back("CPU Difficulty: " + cpuDifficultyLabel(player.cpuDifficulty));
-    lines.push_back(action);
-    lines.push_back("Reason: " + cpuReasonForAction(player, action));
-    showPopupMessage("CPU Decision", lines, hasColor, autoAdvanceUi);
-    if (titleWin) touchwin(titleWin);
-    if (boardWin) touchwin(boardWin);
-    if (infoWin) touchwin(infoWin);
-    if (msgWin) touchwin(msgWin);
+    const std::string detail =
+        "CPU " + cpuDifficultyLabel(player.cpuDifficulty) + " | " + action +
+        " | " + cpuReasonForAction(player, action);
+    renderGame(playerIndex, player.name + " is thinking...", detail);
+    napms(autoAdvanceUi ? 300 : 900);
 }
 
 int Game::effectiveSalary(const Player& player) const {
@@ -1721,13 +1716,13 @@ void Game::showInfoPopup(const std::string& line1, const std::string& line2) con
                      clipUiText(line2, static_cast<std::size_t>(std::max(8, msgWidth - 4))));
     blinkIndicator(msgWin,
                    1,
-                   8,
+                   2,
                    clipUiText(line1, static_cast<std::size_t>(std::max(8, msgWidth - 12))),
                    hasColor,
                    GOLDRUSH_GOLD_SAND,
                    2,
                    2000,
-                   std::max(8, msgWidth - 12));
+                   std::max(8, msgWidth - 4));
     if (autoAdvanceUi) {
         return;
     }

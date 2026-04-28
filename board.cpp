@@ -39,7 +39,14 @@ std::string clipText(const std::string& text, int maxWidth) {
 
 std::string tileTitle(const Tile& tile) {
     switch (tile.kind) {
-        case TILE_BLACK: return "Action";
+        case TILE_BLACK:
+            if (tile.id >= 14 && tile.id <= 24) return "College";
+            if (tile.id >= 26 && tile.id <= 36) return "Career";
+            if (tile.id >= 59 && tile.id <= 68) return "Family";
+            if (tile.id >= 69 && tile.id <= 78) return "Work";
+            if (tile.id >= 80 && tile.id <= 82) return "Safe";
+            if (tile.id >= 83 && tile.id <= 85) return "Risk";
+            return "Action";
         case TILE_START: return "Start";
         case TILE_SPLIT_START: return "Choice";
         case TILE_COLLEGE: return "College";
@@ -183,8 +190,8 @@ int previousTileForView(const std::vector<Tile>& tiles, const Player& player, in
     if (candidates.size() == 1) {
         return candidates[0];
     }
-    if (tileId == 38) {
-        return player.startChoice == 0 ? 24 : 37;
+    if (tileId == 1) {
+        return player.startChoice == 0 ? 37 : 36;
     }
     if (tileId == 79) {
         return player.familyChoice == 0 ? 68 : 78;
@@ -215,7 +222,7 @@ std::set<int> buildVisibleTrail(const std::vector<Tile>& tiles, const Player& pl
     }
 
     cursor = focusTile;
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 6; ++i) {
         cursor = nextTileForView(tiles, player, cursor);
         if (cursor < 0) {
             break;
@@ -416,18 +423,18 @@ void Board::initTiles() {
 
     place(0, 1, 0);
 
-    place(1, 5, 8);
-    place(2, 6, 8);
-    place(3, 7, 8);
-    place(4, 8, 8);
-    place(5, 9, 8);
-    place(6, 10, 8);
-    place(7, 11, 8);
-    place(8, 11, 7);
-    place(9, 11, 6);
-    place(10, 11, 5);
-    place(11, 11, 4);
-    place(12, 11, 3);
+    place(1, 9, 5);
+    place(2, 8, 5);
+    place(3, 7, 5);
+    place(4, 6, 5);
+    place(5, 5, 5);
+    place(6, 5, 4);
+    place(7, 5, 3);
+    place(8, 5, 2);
+    place(9, 6, 2);
+    place(10, 7, 2);
+    place(11, 8, 2);
+    place(12, 9, 2);
 
     place(13, 0, 1);
     place(14, 0, 2);
@@ -436,25 +443,25 @@ void Board::initTiles() {
     place(17, 1, 4);
     place(18, 2, 4);
     place(19, 3, 4);
-    place(20, 3, 3);
-    place(21, 3, 2);
-    place(22, 0, 6);
-    place(23, 1, 6);
-    place(24, 2, 6);
+    place(20, 4, 4);
+    place(21, 5, 4);
+    place(22, 6, 4);
+    place(23, 7, 4);
+    place(24, 8, 4);
 
     place(25, 2, 1);
     place(26, 3, 1);
     place(27, 4, 1);
-    place(28, 4, 2);
-    place(29, 5, 4);
-    place(30, 6, 4);
-    place(31, 7, 4);
-    place(32, 8, 4);
-    place(33, 9, 4);
-    place(34, 10, 4);
-    place(35, 10, 5);
-    place(36, 10, 6);
-    place(37, 10, 7);
+    place(28, 5, 1);
+    place(29, 6, 1);
+    place(30, 7, 1);
+    place(31, 8, 1);
+    place(32, 9, 1);
+    place(33, 10, 1);
+    place(34, 10, 2);
+    place(35, 10, 3);
+    place(36, 10, 4);
+    place(37, 9, 4);
 
     place(38, 4, 8);
     place(39, 3, 6);
@@ -533,7 +540,7 @@ void Board::initTiles() {
     tiles[22].label = "PD";
     tiles[22].kind = TILE_PAYDAY;
     tiles[22].value = 5000;
-    tiles[24].next = 38;
+    tiles[24].next = 37;
 
     tiles[25].label = "A";
     tiles[25].kind = TILE_CAREER;
@@ -546,19 +553,23 @@ void Board::initTiles() {
     tiles[31].label = "PD";
     tiles[31].kind = TILE_PAYDAY;
     tiles[31].value = 7000;
-    tiles[37].next = 38;
+    tiles[37].label = "GR";
+    tiles[37].kind = TILE_GRADUATION;
+    tiles[37].stop = true;
+    tiles[37].next = 1;
+    tiles[36].next = 1;
 
-    tiles[38].label = "GR";
-    tiles[38].kind = TILE_GRADUATION;
-    tiles[38].stop = true;
-    tiles[38].next = 1;
+    tiles[38].label = "BK";
+    tiles[38].kind = TILE_BLACK;
+    tiles[38].value = 2;
+    tiles[38].stop = false;
+    tiles[38].next = 39;
 
     for (int i = 39; i <= 58; ++i) {
         tiles[i].label = "BK";
         tiles[i].kind = TILE_BLACK;
         tiles[i].value = 2;
     }
-    tiles[9].next = 44;
     tiles[12].next = 58;
     tiles[41].label = "PD";
     tiles[41].kind = TILE_PAYDAY;
@@ -707,8 +718,9 @@ void Board::render(WINDOW* boardWin,
     const int maxY = getmaxy(boardWin);
     const int maxX = getmaxx(boardWin);
 
-    const std::string title = " TRAIL CAMERA ";
-    mvwprintw(boardWin, 0, 3, "%s", title.c_str());
+    const std::string title =
+        " " + players[static_cast<std::size_t>(focusIndex)].name + "'s view ";
+    mvwprintw(boardWin, 0, 3, "%s", clipText(title, std::max(0, maxX - 6)).c_str());
 
     const std::string statusLine =
         players[static_cast<std::size_t>(focusIndex)].name + " at Space " +

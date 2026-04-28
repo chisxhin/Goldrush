@@ -117,42 +117,6 @@ void drawAsciiTitle(WINDOW* win, int screenW, bool hasColor) {
     }
 }
 
-void drawMemoryMatchMemorizePopup(WINDOW* win,
-                                  int screenH,
-                                  int screenW,
-                                  int arenaRight,
-                                  int remaining,
-                                  bool hasColor) {
-    const int popupW = 34;
-    const int popupH = 9;
-    int popupY = 10;
-    int popupX = arenaRight + 2;
-    if (popupX + popupW >= screenW - 1) {
-        popupX = (screenW - popupW) / 2;
-        popupY = std::max(1, (screenH - popupH) / 2);
-    }
-
-    if (hasColor) {
-        wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-    }
-    mvwhline(win, popupY, popupX, ACS_HLINE, popupW);
-    mvwhline(win, popupY + popupH - 1, popupX, ACS_HLINE, popupW);
-    mvwvline(win, popupY, popupX, ACS_VLINE, popupH);
-    mvwvline(win, popupY, popupX + popupW - 1, ACS_VLINE, popupH);
-    mvwaddch(win, popupY, popupX, ACS_ULCORNER);
-    mvwaddch(win, popupY, popupX + popupW - 1, ACS_URCORNER);
-    mvwaddch(win, popupY + popupH - 1, popupX, ACS_LLCORNER);
-    mvwaddch(win, popupY + popupH - 1, popupX + popupW - 1, ACS_LRCORNER);
-    mvwprintw(win, popupY + 1, popupX + 8, "MEMORIZE NOW!");
-    if (hasColor) {
-        wattroff(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-    }
-    mvwprintw(win, popupY + 3, popupX + 2, "Study the cards carefully.");
-    mvwprintw(win, popupY + 4, popupX + 2, "Cards will flip over soon.");
-    mvwprintw(win, popupY + 6, popupX + 2, "Time Remaining: %d", remaining);
-    mvwprintw(win, popupY + 7, popupX + 2, "Remember the matching pairs.");
-}
-
 void flashFeedback(WINDOW* win,
                    int y,
                    int screenW,
@@ -280,7 +244,6 @@ MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool ha
                                (screenW - static_cast<int>(timer.size())) / 2,
                                remaining,
                                hasColor);
-            drawMemoryMatchMemorizePopup(overlay, screenH, screenW, arenaRight, remaining, hasColor);
             wrefresh(overlay);
             
             if (std::time(nullptr) - memorizationStart >= 5) {

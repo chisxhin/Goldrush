@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <clocale>
+#include <set>
 #include <utility>
 #include <string>
 #include <sstream>
@@ -205,7 +206,6 @@ void draw_menu_border(bool is_active, int x, int y, int width, int height) {
 
 bool isSpecialMinimapTile(const Tile& tile) {
     switch (tile.kind) {
-        case TILE_BLACK:
         case TILE_SPLIT_START:
         case TILE_SPLIT_FAMILY:
         case TILE_SPLIT_RISK:
@@ -221,6 +221,70 @@ bool isSpecialMinimapTile(const Tile& tile) {
         default:
             return false;
     }
+}
+
+std::string minimapTileLabel(const Tile& tile) {
+    switch (tile.kind) {
+        case TILE_COLLEGE:
+            return "O";
+        case TILE_CAREER:
+            return "A";
+        case TILE_GRADUATION:
+            return "G";
+        case TILE_MARRIAGE:
+            return "M";
+        case TILE_FAMILY:
+            return "F";
+        case TILE_CAREER_2:
+            return "W";
+        case TILE_SAFE:
+            return "S";
+        case TILE_RISKY:
+            return "R";
+        case TILE_RETIREMENT:
+            return "RET";
+        case TILE_START:
+            return "ST";
+        default:
+            return "";
+    }
+}
+
+std::string minimapPathGlyph(int tileId, const Tile& tile) {
+    if (tileId == 0) {
+        return "ST";
+    }
+    if (tileId >= 13 && tileId <= 24) {
+        return "O";
+    }
+    if (tileId >= 25 && tileId <= 36) {
+        return "A";
+    }
+    if (tileId == 37) {
+        return "G";
+    }
+    if (tile.kind == TILE_MARRIAGE) {
+        return "M";
+    }
+    if (tileId >= 59 && tileId <= 68) {
+        return (tileId == 59) ? "F" : "F";
+    }
+    if (tileId >= 69 && tileId <= 78) {
+        return (tileId == 69) ? "W" : "W";
+    }
+    if (tileId >= 80 && tileId <= 82) {
+        return (tileId == 80) ? "S" : "S";
+    }
+    if (tileId >= 83 && tileId <= 85) {
+        return (tileId == 83) ? "R" : "R";
+    }
+    if (tile.kind == TILE_RETIREMENT) {
+        return "T";
+    }
+    if (tile.kind == TILE_BLACK || tile.kind == TILE_PAYDAY) {
+        return "c";
+    }
+    return minimapTileLabel(tile);
 }
 
 void drawMinimapDot(WINDOW* panelWin, int y, int x, const char* glyph, int colorPair) {
@@ -241,6 +305,65 @@ std::vector<std::pair<int, int> > minimapConnections(const Board& board) {
         }
     }
     return connections;
+}
+
+std::vector<int> minimapNeighbors(const Board& board, int tileId) {
+    std::vector<int> neighbors;
+    for (int i = 0; i < TILE_COUNT; ++i) {
+        const Tile& tile = board.tileAt(i);
+        if (tile.next == tileId || tile.altNext == tileId) {
+            neighbors.push_back(i);
+        }
+        if (i == tileId) {
+            if (tile.next >= 0) {
+                neighbors.push_back(tile.next);
+            }
+            if (tile.altNext >= 0) {
+                neighbors.push_back(tile.altNext);
+            }
+        }
+    }
+    std::sort(neighbors.begin(), neighbors.end());
+    neighbors.erase(std::unique(neighbors.begin(), neighbors.end()), neighbors.end());
+    return neighbors;
+}
+
+bool minimapNeedsVertex(const Board& board, int tileId) {
+    const Tile& tile = board.tileAt(tileId);
+    const std::vector<int> neighbors = minimapNeighbors(board, tileId);
+    if (neighbors.size() != 2) {
+        return true;
+    }
+
+    const Tile& a = board.tileAt(neighbors[0]);
+    const Tile& b = board.tileAt(neighbors[1]);
+    const bool sameColumn = (a.x == tile.x && b.x == tile.x);
+    const bool sameRow = (a.y == tile.y && b.y == tile.y);
+    return !(sameColumn || sameRow);
+}
+
+std::set<int> minimapReachableTiles(const Board& board) {
+    std::set<int> reachable;
+    std::vector<int> pending(1, 0);
+
+    while (!pending.empty()) {
+        const int current = pending.back();
+        pending.pop_back();
+        if (current < 0 || current >= TILE_COUNT || reachable.count(current) != 0) {
+            continue;
+        }
+
+        reachable.insert(current);
+        const Tile& tile = board.tileAt(current);
+        if (tile.next >= 0) {
+            pending.push_back(tile.next);
+        }
+        if (tile.altNext >= 0) {
+            pending.push_back(tile.altNext);
+        }
+    }
+
+    return reachable;
 }
 
 void drawMiniLine(WINDOW* panelWin, int y1, int x1, int y2, int x2) {
@@ -570,7 +693,7 @@ void drawEventMessage(WINDOW* messageWin, const std::string& title, const std::s
     box(messageWin, 0, 0);
 
     wattron(messageWin, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
-    mvwprintw(messageWin, 1, 2, "EVENT: %s", clipPanelText(title, static_cast<std::size_t>(std::max(0, width - 10))).c_str());
+    mvwprintw(messageWin, 1, 2, "%s", clipPanelText(title, static_cast<std::size_t>(std::max(0, width - 4))).c_str());
     wattroff(messageWin, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
 
     const std::vector<std::string> lines = wrapUiText(message, static_cast<std::size_t>(std::max(10, width - 4)));
@@ -597,73 +720,100 @@ void draw_sidebar_ui(WINDOW* panelWin,
     mvwprintw(panelWin, 1, 2, "MINI MAP");
     wattroff(panelWin, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
 
+    const int panelHeight = getmaxy(panelWin);
     const int mapTop = 3;
     const int mapLeft = 3;
-    const int mapWidth = 32;
-    const int mapHeight = 11;
+    const int mapCellWidth = 3;
+    const std::set<int> reachable = minimapReachableTiles(board);
     int minTileX = board.tileAt(0).x;
     int maxTileX = board.tileAt(0).x;
     int minTileY = board.tileAt(0).y;
     int maxTileY = board.tileAt(0).y;
     for (int i = 1; i < TILE_COUNT; ++i) {
+        if (reachable.count(i) == 0) {
+            continue;
+        }
         const Tile& tile = board.tileAt(i);
         minTileX = std::min(minTileX, tile.x);
         maxTileX = std::max(maxTileX, tile.x);
         minTileY = std::min(minTileY, tile.y);
         maxTileY = std::max(maxTileY, tile.y);
     }
+    const int logicalRows = std::max(1, maxTileY - minTileY);
+    const int maxMapBottom = std::max(mapTop + logicalRows, panelHeight - 11);
+    const int mapCellHeight =
+        (mapTop + (logicalRows * 2) <= maxMapBottom) ? 2 : 1;
+    const int mapHeight = ((maxTileY - minTileY) * mapCellHeight) + 1;
+    const int separatorWidth = std::max(4, getmaxx(panelWin) - 2);
+    const int mapBottom = mapTop + mapHeight;
 
     wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
-    mvwhline(panelWin, 2, 1, ACS_HLINE, 38);
-    mvwhline(panelWin, mapTop + mapHeight + 1, 1, ACS_HLINE, 38);
+    mvwhline(panelWin, 2, 1, ACS_HLINE, separatorWidth);
+    mvwhline(panelWin, mapBottom + 1, 1, ACS_HLINE, separatorWidth);
     wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
 
     const std::vector<std::pair<int, int> > connections = minimapConnections(board);
     for (std::size_t i = 0; i < connections.size(); ++i) {
+        if (reachable.count(connections[i].first) == 0 || reachable.count(connections[i].second) == 0) {
+            continue;
+        }
         const Tile& from = board.tileAt(connections[i].first);
         const Tile& to = board.tileAt(connections[i].second);
-        const int fromX = mapLeft + ((from.x - minTileX) * (mapWidth - 1)) / std::max(1, maxTileX - minTileX);
-        const int fromY = mapTop + ((from.y - minTileY) * (mapHeight - 1)) / std::max(1, maxTileY - minTileY);
-        const int toX = mapLeft + ((to.x - minTileX) * (mapWidth - 1)) / std::max(1, maxTileX - minTileX);
-        const int toY = mapTop + ((to.y - minTileY) * (mapHeight - 1)) / std::max(1, maxTileY - minTileY);
+        const int fromX = mapLeft + ((from.x - minTileX) * mapCellWidth);
+        const int fromY = mapTop + ((from.y - minTileY) * mapCellHeight);
+        const int toX = mapLeft + ((to.x - minTileX) * mapCellWidth);
+        const int toY = mapTop + ((to.y - minTileY) * mapCellHeight);
         drawMiniLine(panelWin, fromY, fromX, toY, toX);
     }
 
     for (int i = 0; i < TILE_COUNT; ++i) {
+        if (reachable.count(i) == 0) {
+            continue;
+        }
         const Tile& tile = board.tileAt(i);
-        const int drawX = mapLeft + ((tile.x - minTileX) * (mapWidth - 1)) / std::max(1, maxTileX - minTileX);
-        const int drawY = mapTop + ((tile.y - minTileY) * (mapHeight - 1)) / std::max(1, maxTileY - minTileY);
+        const int drawX = mapLeft + ((tile.x - minTileX) * mapCellWidth);
+        const int drawY = mapTop + ((tile.y - minTileY) * mapCellHeight);
 
         const bool playerOneHere = players.size() > 0 && players[0].tile == i;
         const bool playerTwoHere = players.size() > 1 && players[1].tile == i;
 
+        const std::string baseGlyph = minimapPathGlyph(i, tile);
+
         if (playerOneHere && playerTwoHere) {
             drawMinimapDot(panelWin, drawY, drawX, "◎", GOLDRUSH_GOLD_TERRA);
+        } else if (playerOneHere && !baseGlyph.empty() && baseGlyph != "c") {
+            drawMinimapDot(panelWin, drawY, drawX, baseGlyph.c_str(), GOLDRUSH_PLAYER_ONE);
+        } else if (playerTwoHere && !baseGlyph.empty() && baseGlyph != "c") {
+            drawMinimapDot(panelWin, drawY, drawX, baseGlyph.c_str(), GOLDRUSH_BLACK_FOREST);
         } else if (playerOneHere) {
-            drawMinimapDot(panelWin, drawY, drawX, "●", GOLDRUSH_PLAYER_ONE);
+            drawMinimapDot(panelWin, drawY, drawX, "a", GOLDRUSH_PLAYER_ONE);
         } else if (playerTwoHere) {
-            drawMinimapDot(panelWin, drawY, drawX, "●", GOLDRUSH_BLACK_FOREST);
-        } else if (tile.kind == TILE_RETIREMENT) {
-            drawMinimapDot(panelWin, drawY, drawX, "★", GOLDRUSH_GOLD_TERRA);
+            drawMinimapDot(panelWin, drawY, drawX, "b", GOLDRUSH_BLACK_FOREST);
+        } else if (!baseGlyph.empty()) {
+            drawMinimapDot(panelWin,
+                           drawY,
+                           drawX,
+                           baseGlyph.c_str(),
+                           tile.kind == TILE_RETIREMENT ? GOLDRUSH_GOLD_TERRA : GOLDRUSH_BLACK_TERRA);
         } else if (isSpecialMinimapTile(tile)) {
             drawMinimapDot(panelWin, drawY, drawX, "◆", GOLDRUSH_BLACK_TERRA);
-        } else {
-            drawMinimapDot(panelWin, drawY, drawX, "·", GOLDRUSH_BROWN_CREAM);
+        } else if (minimapNeedsVertex(board, i)) {
+            drawMinimapDot(panelWin, drawY, drawX, ".", GOLDRUSH_BROWN_CREAM);
         }
     }
 
-    mvwprintw(panelWin, mapTop + mapHeight + 2, 2, "P1");
-    drawMinimapDot(panelWin, mapTop + mapHeight + 2, 6, "●", GOLDRUSH_PLAYER_ONE);
-    mvwprintw(panelWin, mapTop + mapHeight + 2, 9, "Gold");
-    mvwprintw(panelWin, mapTop + mapHeight + 3, 2, "P2");
-    drawMinimapDot(panelWin, mapTop + mapHeight + 3, 6, "●", GOLDRUSH_BLACK_FOREST);
-    mvwprintw(panelWin, mapTop + mapHeight + 3, 9, "Green");
+    mvwprintw(panelWin, mapBottom + 2, 2, "P1");
+    drawMinimapDot(panelWin, mapBottom + 2, 6, "●", GOLDRUSH_PLAYER_ONE);
+    mvwprintw(panelWin, mapBottom + 2, 9, "Gold");
+    mvwprintw(panelWin, mapBottom + 3, 2, "P2");
+    drawMinimapDot(panelWin, mapBottom + 3, 6, "●", GOLDRUSH_BLACK_FOREST);
+    mvwprintw(panelWin, mapBottom + 3, 9, "Green");
 
     if (!players.empty() && currentPlayer >= 0 && currentPlayer < static_cast<int>(players.size())) {
         const Player& player = players[currentPlayer];
         const std::string home = player.retirementHome.empty() ? "--" : player.retirementHome;
         const std::string invest = player.investedNumber > 0 ? std::to_string(player.investedNumber) : "-";
-        const int statsY = mapTop + mapHeight + 5;
+        const int statsY = mapBottom + 5;
 
         wattron(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
         mvwprintw(panelWin, statsY, 2, "%-.24s's trail", player.name.c_str());
