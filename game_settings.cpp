@@ -350,14 +350,3 @@ bool showCustomSettingsMenu(GameSettings& settings, bool hasColor) {
         }
     }
 }
-
-GameSettings createCustomSettingsFromMenu(bool hasColor) {
-    GameSettings settings = createLifeModeSettings();
-    settings.customMode = true;
-    settings.modeName = "Custom Mode";
-    showCustomSettingsMenu(settings, hasColor);
-    validateGameSettings(settings);
-    return settings;
-}
-
-//look here

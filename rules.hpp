@@ -37,7 +37,5 @@ struct RuleSet {
     int spinToWinPrize;
 };
 
-RuleSet makeStandardRules();
-RuleSet makeE4304Rules();
 RuleSet makeNormalRules();
 RuleSet makeCustomRules();

@@ -6,7 +6,6 @@
 #include "cards.hpp"
 #include "completed_history.h"
 #include "cpu_player.hpp"
-#include "dice_art.h"
 #include "game.hpp"
 #include "hangman.hpp"
 #include "input_helpers.h"

@@ -20,6 +20,7 @@ const short UI_COLOR_TERRA = 26;
 const short UI_COLOR_FOREST = 27;
 const short UI_COLOR_STEEL = 28;
 const short UI_COLOR_MAUVE = 29;
+const int UI_ESC_DELAY_MS = 25;
 
 short earthyOr(short custom, short fallback) {
     if (can_change_color() && COLORS >= 32) {
@@ -414,6 +415,9 @@ void drawMiniLine(WINDOW* panelWin, int y1, int x1, int y2, int x2) {
 void initialize_game_ui() {
     setlocale(LC_ALL, "");
     initscr();
+#ifdef NCURSES_VERSION
+    set_escdelay(UI_ESC_DELAY_MS);
+#endif
     cbreak();
     noecho();
     keypad(stdscr, TRUE);

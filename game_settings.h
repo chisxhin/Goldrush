@@ -48,10 +48,8 @@ struct GameSettings {
 GameSettings createRelaxModeSettings();
 GameSettings createLifeModeSettings();
 GameSettings createHellModeSettings();
-GameSettings createCustomSettingsFromMenu(bool hasColor);
 
 void validateGameSettings(GameSettings& settings);
 void applyGameSettingsToRules(const GameSettings& settings, RuleSet& rules);
-//deleted
 bool showCustomSettingsMenu(GameSettings& settings, bool hasColor);
 std::string gameSettingsSummary(const GameSettings& settings);

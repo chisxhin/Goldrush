@@ -418,7 +418,7 @@ void Game::drawSetupTitle() const {
     const char* lines[] = {
         "  ________         .__       .___                       .__      ",
         " /  _____/    ____ |  |    __| _/______ __ __     _____ |  |__   ",
-        "/   \\  ___  /  _ \|  |   / __ |\\_  __ \\  |  \\/  ___/|     \\ ",
+        "/   \\  ___  /  _ \\|  |   / __ |\\_  __ \\  |  \\/  ___/|     \\ ",
         "\\   \\_\\  (  <_> )  |__/ /_/ |  |  | \\/  |  /\\___ \\|   Y  \\",
         " \\______  /\\____/|____/\\____|  |__|   |____/  /____  >___|  / ",
         "        \\/                  \\/                     \\/    \\/  "
@@ -511,7 +511,6 @@ void Game::showRollResultPopup(int value) const {
         touchwin(msgWin);
         wrefresh(msgWin);
     }
-    
     //here
     const std::vector<std::string> banner = bigRollNumberArt(value);
     const std::string title = "YOU ROLLED A";
@@ -826,7 +825,7 @@ Game::StartChoice Game::showStartScreen() {
     const char* lines[] = {
         "  ________         .__       .___                       .__      ",
         " /  _____/    ____ |  |    __| _/______ __ __     _____ |  |__   ",
-        "/   \\  ___  /  _ \|  |   / __ |\\_  __ \\  |  \\/  ___/|     \\ ",
+        "/   \\  ___  /  _ \\|  |   / __ |\\_  __ \\  |  \\/  ___/|     \\ ",
         "\\   \\_\\  (  <_> )  |__/ /_/ |  |  | \\/  |  /\\___ \\|   Y  \\",
         " \\______  /\\____/|____/\\____|  |__|   |____/  /____  >___|  / ",
         "        \\/                  \\/                     \\/    \\/  "
@@ -888,7 +887,7 @@ Game::StartChoice Game::showStartScreen() {
 
         int ch = getch();
         if (!choosingMode) {
-            if (ch == 'n' || ch == 'N' || ch == 's' || ch == 'S') { //look here
+            if (ch == 'n' || ch == 'N' || ch == 's' || ch == 'S') {
                 rules = makeNormalRules();
 
                 if (!chooseBoardViewMode()) {

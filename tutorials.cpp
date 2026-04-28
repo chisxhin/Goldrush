@@ -13,10 +13,10 @@ WINDOW* centeredPopup(int height, int width) {
     getmaxyx(stdscr, screenH, screenW);
     const int popupH = std::min(height, std::max(8, screenH - 2));
     const int popupW = std::min(width, std::max(40, screenW - 2));
-    WINDOW* popup = createCenteredWindow(popupH,                            popupW, 8, 40);
+    WINDOW* popup = createCenteredWindow(popupH, popupW, 8, 40);
     if (!popup) {
         showTerminalSizeWarning(8, 40, has_colors());
-    return nullptr;
+        return nullptr;
     }
     keypad(popup, TRUE);
     return popup;
@@ -27,7 +27,7 @@ void drawCentered(WINDOW* win, int y, const std::string& text, int attrs = A_NOR
     int width = 0;
     getmaxyx(win, height, width);
     (void)height;
-const std::string clipped = clipUiText(text, static_cast<std::size_t>(std::max(1, width - 2)));
+    const std::string clipped = clipUiText(text, static_cast<std::size_t>(std::max(1, width - 2)));
     if (attrs != A_NORMAL) {
         wattron(win, attrs);
     }
@@ -63,7 +63,7 @@ std::string tutorialTitle(TutorialTopic topic) {
         case TutorialTopic::Baby: return "Babies and Kids";
         case TutorialTopic::Pet: return "Pets";
         case TutorialTopic::Marriage: return "Marriage";
-                case TutorialTopic::Insurance: return "Insurance";
+        case TutorialTopic::Insurance: return "Insurance";
         case TutorialTopic::Shield: return "Shields";
         case TutorialTopic::ActionCard: return "Action Cards";
         case TutorialTopic::Minigame: return "Minigames";
@@ -137,7 +137,7 @@ void showPagedGuide(const std::string& title,
                     const std::vector<std::vector<std::string> >& pages,
                     bool hasColor) {
     WINDOW* popup = centeredPopup(20, 84);
-if (!popup) {
+    if (!popup) {
         return;
     }
     const int pageCount = std::max(1, static_cast<int>(pages.size()));
@@ -289,7 +289,7 @@ void showFullGuide(const Board& board, const RuleSet& rules, bool sabotageUnlock
 
 bool showQuitConfirmation(bool hasColor) {
     WINDOW* popup = centeredPopup(10, 56);
-if (!popup) {
+    if (!popup) {
         return false;
     }
     werase(popup);
@@ -335,7 +335,7 @@ void showSabotageUnlockAnimation(bool hasColor) {
     art.push_back("|____/_/   \\_\\____/ \\___/ |_/_/   \\_\\____|_____|");
 
     WINDOW* popup = centeredPopup(15, 72);
-if (!popup) {
+    if (!popup) {
         return;
     }
     for (int frame = 0; frame < 6; ++frame) {
@@ -355,7 +355,7 @@ if (!popup) {
         wrefresh(popup);
         napms(180);
     }
-int height = 0;
+    int height = 0;
     int width = 0;
     getmaxyx(popup, height, width);
     mvwprintw(popup, height - 2, 2, "%s",
