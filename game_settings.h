@@ -52,6 +52,6 @@ GameSettings createCustomSettingsFromMenu(bool hasColor);
 
 void validateGameSettings(GameSettings& settings);
 void applyGameSettingsToRules(const GameSettings& settings, RuleSet& rules);
-bool showGameModeMenu(GameSettings& settings, bool hasColor);
+//deleted
 bool showCustomSettingsMenu(GameSettings& settings, bool hasColor);
 std::string gameSettingsSummary(const GameSettings& settings);

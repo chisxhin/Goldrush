@@ -235,16 +235,19 @@ int previousTileForView(const std::vector<Tile>& tiles, const Player& player, in
     if (candidates.size() == 1) {
         return candidates[0];
     }
-    if (tileId == 1) {
+    if (tileId == 38){ // College/Career split
+        return player.startChoice == 0 ? 24 : 37;
+    }
+    if (tileId == 1) { //Path after graduation
         return player.startChoice == 0 ? 37 : 36;
     }
-    if (tileId == 79) {
+    if (tileId == 79) { // Family split
         return player.familyChoice == 0 ? 68 : 78;
     }
-    if (tileId == 87) {
+    if (tileId == 87) { // Risky/Safe split
         return 86;
     }
-    if (tileId == 86) {
+    if (tileId == 86) { // Retirement split
         return player.riskChoice == 0 ? 82 : 85;
     }
     return candidates[0];

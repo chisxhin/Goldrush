@@ -24,8 +24,8 @@ const int TOTAL_PAIRS = 8;
 const int TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
 const int STARTING_LIVES = 20;
 const int MAX_HELP_USES = 5;
-const int HELP_REVEAL_MS = 900;
-const int MATCH_REVEAL_MS = 90;
+const int HELP_REVEAL_MS = 1000;
+const int MATCH_REVEAL_MS = 800;
 const int CELL_WIDTH = 7;
 const int CELL_HEIGHT = 3;
 const int TOTAL_GRID_WIDTH = GRID_SIZE * CELL_WIDTH;
@@ -36,7 +36,7 @@ const int TOTAL_GRID_WIDTH = GRID_SIZE * CELL_WIDTH;
 
 const std::vector<std::string> MEMORY_TITLE = {
     " _      _____ _      ____  ____ ___  _ _____ ____  _      _____",
-    "/ \\__/|/  __// \\__/|/  _ \\/  __\\\\  \\///  __//  _ \\/ \\__/|/  __/",
+    " / \\__/|/  __// \\__/|/  _ \\/  __\\\\  \\///  __//  _ \\/ \\__/|/  __/",
     "| |\\/|||  \\  | |\\/||| / \\||  \\/| \\  / | |  _| / \\|| |\\/|||  \\  ",
     "| |  |||  /_ | |  ||| \\_/||    / / /  | |_//| |-||| |  |||  /_ ",
     "\\_/  \\|\\____\\\\_/  \\|\\____/\\_/\\_\\/_/   \\____\\\\_/ \\|\\_/  \\|\\____\\",
