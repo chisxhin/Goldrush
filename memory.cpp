@@ -31,7 +31,7 @@ const int CELL_HEIGHT = 3;
 const int TOTAL_GRID_WIDTH = GRID_SIZE * CELL_WIDTH;
 
 [[maybe_unused]] const std::vector<std::string> SYMBOLS = {
-    "★", "▶", "𒊹", "■", "⬟", "✚", "❤", "ⵌ"
+    "A", "B", "C", "D", "E", "F", "G", "H"
 };
 
 const std::vector<std::string> MEMORY_TITLE = {

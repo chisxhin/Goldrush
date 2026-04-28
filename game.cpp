@@ -12,6 +12,7 @@
 #include "ui_helpers.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -29,8 +30,90 @@ std::string appendLoanText(const std::string& base, const PaymentResult& payment
     return out.str();
 }
 
+std::string trimCopy(const std::string& text) {
+    std::size_t begin = 0;
+    while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin]))) {
+        ++begin;
+    }
+    std::size_t end = text.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1]))) {
+        --end;
+    }
+    return text.substr(begin, end - begin);
+}
+
+bool parseStrictInt(const std::string& text, int& value) {
+    const std::string trimmed = trimCopy(text);
+    if (trimmed.empty()) {
+        return false;
+    }
+    std::size_t index = 0;
+    if (trimmed[index] == '+' || trimmed[index] == '-') {
+        ++index;
+    }
+    if (index >= trimmed.size()) {
+        return false;
+    }
+    for (; index < trimmed.size(); ++index) {
+        if (!std::isdigit(static_cast<unsigned char>(trimmed[index]))) {
+            return false;
+        }
+    }
+    char* end = nullptr;
+    const long parsed = std::strtol(trimmed.c_str(), &end, 10);
+    if (end == nullptr || *end != '\0' || parsed < -2147483647L - 1L || parsed > 2147483647L) {
+        return false;
+    }
+    value = static_cast<int>(parsed);
+    return true;
+}
+
+bool confirmTitleQuit(bool hasColor) {
+    int h = 0;
+    int w = 0;
+    getmaxyx(stdscr, h, w);
+    const int popupH = 9;
+    const int popupW = 54;
+    WINDOW* popup = newwin(popupH, popupW, std::max(0, (h - popupH) / 2), std::max(0, (w - popupW) / 2));
+    apply_ui_background(popup);
+    keypad(popup, TRUE);
+
+    while (true) {
+        werase(popup);
+        box(popup, 0, 0);
+        if (hasColor) wattron(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+        mvwprintw(popup, 1, 2, "QUIT GAME?");
+        if (hasColor) wattroff(popup, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
+        mvwprintw(popup, 3, 2, "Are you sure you want to quit?");
+        mvwprintw(popup, 5, 2, "Press ENTER to quit.");
+        mvwprintw(popup, 6, 2, "Press ESC to go back.");
+        wrefresh(popup);
+
+        const int ch = wgetch(popup);
+        if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+            delwin(popup);
+            return true;
+        }
+        if (ch == 27) {
+            delwin(popup);
+            return false;
+        }
+    }
+}
+
+std::string careerDescriptionText(const CareerCard& card) {
+    const std::string description = trimCopy(card.description);
+    if (!description.empty() && description != card.title) {
+        return description;
+    }
+    if (card.requiresDegree) {
+        return "A degree-focused career with stronger long-term salary potential.";
+    }
+    return "A practical career path that starts earning steady pay right away.";
+}
+
 std::string turnPromptText() {
-    return "ENTER begin turn | B sabotage | TAB scores | G guide | K keys | S save | ESC menu";
+    return "ENTER begin turn | B sabotage | TAB scores+map | G guide | K keys | S save | ESC menu";
 }
 
 std::vector<std::string> bigRollNumberArt(int value) {
@@ -758,7 +841,12 @@ Game::StartChoice Game::showStartScreen() {
                 return START_NEW_GAME;
             }
             if (ch == 'l' || ch == 'L') return START_LOAD_GAME;
-            if (ch == 27 || ch == 'q' || ch == 'Q') return START_QUIT_GAME;
+            if (ch == 27) {
+                if (confirmTitleQuit(hasColor)) {
+                    return START_QUIT_GAME;
+                }
+                continue;
+            }
         } else {
             if (ch == KEY_LEFT || ch == KEY_UP) {
                 highlightedMode = highlightedMode == 0 ? 1 : 0;
@@ -768,7 +856,7 @@ Game::StartChoice Game::showStartScreen() {
                 highlightedMode = highlightedMode == 1 ? 0 : 1;
                 continue;
             }
-            if (ch == 27 || ch == 'q' || ch == 'Q') {
+            if (ch == 27) {
                 choosingMode = false;
                 continue;
             }
@@ -961,7 +1049,7 @@ void Game::showTutorial() {
     pages[0].push_back("Marriage, babies, and house sales use special event spins.");
     pages[0].push_back("Retirement lets you choose Millionaire Mansion (MM) or Countryside Acres (CA).");
     pages[0].push_back("After a turn ends, press ENTER and pass the story to the next player.");
-    pages[0].push_back("During turns: B sabotage/defense, TAB scoreboard, G tile guide, K controls.");
+    pages[0].push_back("During turns: B sabotage/defense, TAB scores plus minimap, G tile guide, K controls.");
 
     std::vector<std::string> legend = board.tutorialLegend();
     pages.push_back(std::vector<std::string>(legend.begin(), legend.begin() + 9));
@@ -1010,7 +1098,7 @@ void Game::showControlsPopup() const {
     mvwprintw(popup, 3, 2, "ENTER  Confirm a menu or start your turn spin");
     mvwprintw(popup, 4, 2, "SPACE  Hold/release to spin the wheel");
     mvwprintw(popup, 5, 2, "UP/DN  Move through menus and custom mode toggles");
-    mvwprintw(popup, 6, 2, "TAB    Open the player scoreboard");
+    mvwprintw(popup, 6, 2, "TAB    Open the player scoreboard and minimap");
     mvwprintw(popup, 7, 2, "G      Open the tile abbreviation guide");
     mvwprintw(popup, 8, 2, "B      Open sabotage and defense actions");
     mvwprintw(popup, 9, 2, "S      Save the current game");
@@ -1027,14 +1115,24 @@ void Game::showControlsPopup() const {
 void Game::showScoreboardPopup() const {
     int h, w;
     getmaxyx(stdscr, h, w);
-    const int popupH = 16;
-    const int popupW = 104;
+    const int popupH = std::min(28, std::max(18, h - 4));
+    const int popupW = std::min(120, std::max(116, w - 4));
     WINDOW* popup = newwin(popupH, popupW, (h - popupH) / 2, (w - popupW) / 2);
     applyWindowBg(popup);
+    keypad(popup, TRUE);
     box(popup, 0, 0);
 
-    blinkIndicator(popup, 1, 2, "Scoreboard", hasColor, GOLDRUSH_GOLD_SAND, 2, 0, popupW - 4);
-    mvwprintw(popup, 2, 2, "Rank  Player          Type      Tile / Space                 Cash       Loans      Worth est.");
+    WINDOW* scoreWin = derwin(popup, popupH - 4, 62, 2, 2);
+    WINDOW* mapWin = derwin(popup, popupH - 4, popupW - 67, 2, 65);
+    applyWindowBg(scoreWin);
+    applyWindowBg(mapWin);
+
+    blinkIndicator(popup, 1, 2, "Scoreboard + Minimap", hasColor, GOLDRUSH_GOLD_SAND, 2, 0, popupW - 4);
+
+    werase(scoreWin);
+    box(scoreWin, 0, 0);
+    mvwprintw(scoreWin, 1, 2, "SCOREBOARD");
+    mvwprintw(scoreWin, 2, 2, "Rank Player         Type      Space     Cash      Loans Worth");
 
     std::vector<int> order;
     for (size_t i = 0; i < players.size(); ++i) {
@@ -1050,39 +1148,53 @@ void Game::showScoreboardPopup() const {
         const Tile& tile = board.tileAt(player.tile);
         const int y = 4 + static_cast<int>(row);
         const std::string name = clipMenuText(player.name, 14);
-        const std::string tileText = "Space " + std::to_string(player.tile) + " - " + getTileDisplayName(tile);
+        const std::string tileText = std::to_string(player.tile) + " " + getTileAbbreviation(tile);
         const std::string typeText = player.type == PlayerType::CPU
             ? "CPU-" + cpuDifficultyLabel(player.cpuDifficulty)
             : "Human";
 
         if (playerIndex == currentPlayerIndex) {
-            wattron(popup, A_REVERSE);
+            wattron(scoreWin, A_REVERSE);
         }
-        mvwprintw(popup,
+        mvwprintw(scoreWin,
                   y,
                   2,
-                  "%-5d %-14s %-9s %-28s $%-9d %-10d $%-10d",
+                  "%-4d %-14s %-9s %-8s $%-8d %-5d $%-8d",
                   static_cast<int>(row + 1),
                   name.c_str(),
                   clipMenuText(typeText, 9).c_str(),
-                  clipMenuText(tileText, 28).c_str(),
+                  clipMenuText(tileText, 8).c_str(),
                   player.cash,
                   player.loans,
                   calculateFinalWorth(player));
         if (playerIndex == currentPlayerIndex) {
-            wattroff(popup, A_REVERSE);
+            wattroff(scoreWin, A_REVERSE);
         }
     }
 
-    mvwprintw(popup, popupH - 4, 2, "Highlighted row is the current turn. Route: %s",
+    mvwprintw(scoreWin, popupH - 8, 2, "Highlighted row has the current turn.");
+    mvwprintw(scoreWin, popupH - 7, 2, "Route: %s",
               clipMenuText(playerRouteText(players[currentPlayerIndex]), 66).c_str());
-    mvwprintw(popup, popupH - 3, 2, "Current turn: %s on Space %d - %s",
+    mvwprintw(scoreWin, popupH - 6, 2, "Current: %s on Space %d - %s",
               players[currentPlayerIndex].name.c_str(),
               players[currentPlayerIndex].tile,
-              getTileDisplayName(board.tileAt(players[currentPlayerIndex].tile)).c_str());
-    mvwprintw(popup, popupH - 2, 2, "Press ENTER");
+              clipMenuText(getTileDisplayName(board.tileAt(players[currentPlayerIndex].tile)), 30).c_str());
+    wrefresh(scoreWin);
+
+    drawMinimapPanel(mapWin, board, players, currentPlayerIndex);
+
+    mvwprintw(popup, popupH - 2, 2, "Close with TAB, ENTER, or ESC.");
     wrefresh(popup);
-    waitForEnter(popup, popupH - 2, 15, "");
+
+    while (true) {
+        const int ch = wgetch(popup);
+        if (ch == '\t' || ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 27) {
+            break;
+        }
+    }
+
+    delwin(mapWin);
+    delwin(scoreWin);
     delwin(popup);
 }
 
@@ -1301,7 +1413,7 @@ int Game::chooseSabotageTarget(int attackerIndex) {
             const int chosen = candidates[static_cast<std::size_t>(selected)];
             delwin(popup);
             return chosen;
-        } else if (ch == 'q' || ch == 'Q' || ch == 27) {
+        } else if (ch == 27) {
             delwin(popup);
             return -1;
         }
@@ -1310,28 +1422,35 @@ int Game::chooseSabotageTarget(int attackerIndex) {
 
 int Game::chooseTrapTile(int attackerIndex) {
     Player& player = players[static_cast<std::size_t>(attackerIndex)];
-    echo();
-    curs_set(1);
-    werase(msgWin);
-    box(msgWin, 0, 0);
-    mvwprintw(msgWin, 1, 2, "Trap tile id (0-%d) [%d]: ", TILE_COUNT - 1, player.tile);
-    mvwprintw(msgWin, 2, 2, "Tip: choose a tile ahead of the leader.");
-    wrefresh(msgWin);
+    std::string errorText;
+    while (true) {
+        echo();
+        curs_set(1);
+        werase(msgWin);
+        box(msgWin, 0, 0);
+        mvwprintw(msgWin, 1, 2, "Trap tile id (0-%d) [%d]: ", TILE_COUNT - 1, player.tile);
+        mvwprintw(msgWin, 2, 2, "Tip: choose a tile ahead of the leader. Blank uses your current tile.");
+        if (!errorText.empty()) {
+            mvwprintw(msgWin, 3, 2, "%s", errorText.c_str());
+        }
+        wrefresh(msgWin);
 
-    char buffer[16] = {0};
-    wgetnstr(msgWin, buffer, 15);
-    noecho();
-    curs_set(0);
+        char buffer[16] = {0};
+        wgetnstr(msgWin, buffer, 15);
+        noecho();
+        curs_set(0);
 
-    if (std::strlen(buffer) == 0) {
-        return player.tile;
+        if (std::strlen(buffer) == 0) {
+            return player.tile;
+        }
+
+        int tileId = -1;
+        if (!parseStrictInt(buffer, tileId) || tileId < 0 || tileId >= TILE_COUNT) {
+            errorText = "Invalid tile id. Enter a number from 0 to " + std::to_string(TILE_COUNT - 1) + ".";
+            continue;
+        }
+        return tileId;
     }
-    const int tileId = std::atoi(buffer);
-    if (tileId < 0 || tileId >= TILE_COUNT) {
-        showInfoPopup("Trap Tile", "Invalid tile id.");
-        return -1;
-    }
-    return tileId;
 }
 
 void Game::placeTrap(int attackerIndex, int tileId, SabotageType type) {
@@ -1453,6 +1572,7 @@ bool Game::promptSabotageMenu(int attackerIndex) {
     WINDOW* popup = newwin(19, 82, (h - 19) / 2, (w - 82) / 2);
     applyWindowBg(popup);
     keypad(popup, TRUE);
+    std::string status;
 
     while (true) {
         werase(popup);
@@ -1471,15 +1591,19 @@ bool Game::promptSabotageMenu(int attackerIndex) {
         mvwprintw(popup, 12, 2, "9 Buy Shield Card ($15000)");
         mvwprintw(popup, 13, 2, "0 Buy Insurance ($20000, 2 uses)");
         mvwprintw(popup, 14, 2, "D Item Disable ($16000)");
+        if (!status.empty()) {
+            mvwprintw(popup, 16, 2, "%s", status.c_str());
+        }
         mvwprintw(popup, 17, 2, "Choose option or ESC cancel");
         wrefresh(popup);
 
         const int ch = wgetch(popup);
-        delwin(popup);
-        if (ch == 'q' || ch == 'Q' || ch == 27) {
+        if (ch == 27) {
+            delwin(popup);
             return false;
         }
         if (ch == '9') {
+            delwin(popup);
             PaymentResult payment = bank.charge(attacker, 15000);
             ++attacker.shieldCards;
             std::string detail = "Shield Card added. Blocks one future sabotage.";
@@ -1490,6 +1614,7 @@ bool Game::promptSabotageMenu(int attackerIndex) {
             return true;
         }
         if (ch == '0') {
+            delwin(popup);
             PaymentResult payment = bank.charge(attacker, 20000);
             attacker.insuranceUses += 2;
             std::string detail = "Insurance added. Next 2 money/property hits are halved.";
@@ -1500,19 +1625,25 @@ bool Game::promptSabotageMenu(int attackerIndex) {
             return true;
         }
         if (ch == '1') {
+            delwin(popup);
             const int tileId = chooseTrapTile(attackerIndex);
             if (tileId < 0) return false;
-            werase(msgWin);
-            box(msgWin, 0, 0);
-            mvwprintw(msgWin, 1, 2, "Trap effect: 1 money  2 backward  3 skip  4 lose card  5 minigame");
-            mvwprintw(msgWin, 2, 2, "Choose effect:");
-            wrefresh(msgWin);
-            const int trapChoice = wgetch(msgWin);
+            const int trapChoice = showBranchPopup(
+                "Choose Trap Effect",
+                std::vector<std::string>{
+                    "- Money loss: target pays cash",
+                    "- Backward move: target is pushed back",
+                    "- Skip turn: target loses their next turn",
+                    "- Lose card: target drops an action card",
+                    "- Minigame: target is forced into a duel"
+                },
+                'A',
+                'B');
             SabotageType trapType = SabotageType::MoneyLoss;
-            if (trapChoice == '2') trapType = SabotageType::MovementPenalty;
-            else if (trapChoice == '3') trapType = SabotageType::SkipTurn;
-            else if (trapChoice == '4') trapType = SabotageType::StealCard;
-            else if (trapChoice == '5') trapType = SabotageType::ForceMinigame;
+            if (trapChoice == 1) trapType = SabotageType::MovementPenalty;
+            else if (trapChoice == 2) trapType = SabotageType::SkipTurn;
+            else if (trapChoice == 3) trapType = SabotageType::StealCard;
+            else if (trapChoice == 4) trapType = SabotageType::ForceMinigame;
             placeTrap(attackerIndex, tileId, trapType);
             return true;
         }
@@ -1526,8 +1657,12 @@ bool Game::promptSabotageMenu(int attackerIndex) {
         else if (ch == '7') type = SabotageType::PositionSwap;
         else if (ch == '8') type = SabotageType::DebtIncrease;
         else if (ch == 'd' || ch == 'D') type = SabotageType::ItemDisable;
-        else return false;
+        else {
+            status = "Invalid choice. Use 0-9, D, or ESC.";
+            continue;
+        }
 
+        delwin(popup);
         const int targetIndex = chooseSabotageTarget(attackerIndex);
         if (targetIndex >= 0) {
             executeSabotage(attackerIndex, targetIndex, type);
@@ -1613,45 +1748,56 @@ void Game::setupRules() {
 }
 
 void Game::setupPlayers() {
-    echo();
-    curs_set(1);
-    int numPlayers = 0;
-    while (numPlayers < 2 || numPlayers > 4) {
-        drawSetupTitle();
-        werase(msgWin);
-        box(msgWin, 0, 0);
-        mvwprintw(msgWin, 1, 2, "How many players? (2-4): ");
-        wrefresh(msgWin);
-        char buf[8] = {0};
-        wgetnstr(msgWin, buf, 7);
-        numPlayers = std::atoi(buf);
-    }
+    noecho();
+    curs_set(0);
+    drawSetupTitle();
+    const int numPlayers = choose_branch_with_selector(
+        "How many players?",
+        std::vector<std::string>{
+            "- 2 Players: quick duel",
+            "- 3 Players: balanced table",
+            "- 4 Players: full table"
+        },
+        std::vector<int>{2, 3, 4},
+        2);
 
     players.clear();
     players.reserve(numPlayers);
     for (int i = 0; i < numPlayers; ++i) {
         drawSetupTitle();
-        werase(msgWin);
-        box(msgWin, 0, 0);
-        mvwprintw(msgWin, 1, 2, "Player %d type (H human / C CPU): ", i + 1);
-        wrefresh(msgWin);
-        char typeBuf[8] = {0};
-        wgetnstr(msgWin, typeBuf, 7);
-
-        PlayerType playerType = playerTypeFromText(typeBuf);
+        const int typeChoice = showBranchPopup(
+            "Player " + std::to_string(i + 1) + " type",
+            std::vector<std::string>{
+                "- Human: this player uses keyboard input",
+                "- CPU: computer-controlled opponent"
+            },
+            'A',
+            'B');
+        PlayerType playerType = typeChoice == 0 ? PlayerType::Human : PlayerType::CPU;
         CpuDifficulty difficulty = CpuDifficulty::Normal;
         if (playerType == PlayerType::CPU) {
             drawSetupTitle();
-            werase(msgWin);
-            box(msgWin, 0, 0);
-            mvwprintw(msgWin, 1, 2, "CPU %d difficulty (E easy / N normal / H hard): ", i + 1);
-            wrefresh(msgWin);
-            char diffBuf[8] = {0};
-            wgetnstr(msgWin, diffBuf, 7);
-            difficulty = cpuDifficultyFromText(diffBuf);
+            const int difficultyChoice = showBranchPopup(
+                "CPU " + std::to_string(i + 1) + " difficulty",
+                std::vector<std::string>{
+                    "- Easy: more mistakes and simpler choices",
+                    "- Normal: balanced decisions",
+                    "- Hard: stronger money and route decisions"
+                },
+                'A',
+                'B');
+            if (difficultyChoice == 0) {
+                difficulty = CpuDifficulty::Easy;
+            } else if (difficultyChoice == 2) {
+                difficulty = CpuDifficulty::Hard;
+            } else {
+                difficulty = CpuDifficulty::Normal;
+            }
         }
 
         drawSetupTitle();
+        echo();
+        curs_set(1);
         werase(msgWin);
         box(msgWin, 0, 0);
         if (playerType == PlayerType::CPU) {
@@ -1662,6 +1808,8 @@ void Game::setupPlayers() {
         wrefresh(msgWin);
         char nameBuf[32] = {0};
         wgetnstr(msgWin, nameBuf, 31);
+        noecho();
+        curs_set(0);
 
         Player p;
         p.name = nameBuf;
@@ -1749,7 +1897,7 @@ int Game::waitForTurnCommand(int currentPlayer) {
                        turnPromptText());
             continue;
         }
-        if (ch == 27 || ch == 'q' || ch == 'Q') return 27;
+        if (ch == 27) return 27;
         if (ch == 's' || ch == 'S') return ch;
         if (ch == 'b' || ch == 'B') return ch;
         if (ch == '\t') {
@@ -1952,8 +2100,9 @@ int Game::showBranchPopup(const std::string& title,
     (void)a;
     (void)b;
     std::vector<int> values;
-    values.push_back(0);
-    values.push_back(1);
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        values.push_back(static_cast<int>(i));
+    }
     return choose_branch_with_selector(title, lines, values, 0);
 }
 
@@ -2582,7 +2731,10 @@ void Game::chooseCareer(Player& player, bool requiresDegree) {
 
     std::vector<std::string> lines;
     for (size_t i = 0; i < choices.size(); ++i) {
-        lines.push_back("- " + choices[i].title + " ($" + std::to_string(choices[i].salary) + ")");
+        lines.push_back("- " + choices[i].title + ": " +
+                        careerDescriptionText(choices[i]) +
+                        " Salary $" + std::to_string(choices[i].salary) +
+                        (choices[i].requiresDegree ? ". Degree required." : ". No degree required."));
     }
 
     int choice = 0;
@@ -2608,7 +2760,11 @@ void Game::chooseCareer(Player& player, bool requiresDegree) {
 
     addHistory(player.name + " became " + player.job);
     showInfoPopup(player.name + " became a " + player.job,
-                  "Salary set to $" + std::to_string(player.salary));
+                  careerDescriptionText(choices[static_cast<std::size_t>(choice)]) +
+                  " Salary: $" + std::to_string(player.salary) +
+                  (choices[static_cast<std::size_t>(choice)].requiresDegree
+                       ? ". Degree required."
+                       : ". No degree required."));
 }
 
 void Game::resolveFamilyStop(Player& player) {
@@ -2860,11 +3016,11 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
         case TILE_COLLEGE: {
             player.collegeGraduate = false;
             if (player.startChoice == 0) {
-                line = "COLLEGE: tuition was paid when this route was chosen.";
+                line = "College begins. Tuition was already paid when this route was chosen.";
                 addHistory(player.name + " entered college");
             } else {
                 PaymentResult payment = bank.charge(player, 100000);
-                line = appendLoanText("COLLEGE: tuition/loan cost $100000.", payment);
+                line = appendLoanText("College opens a late door, but tuition costs $100000.", payment);
                 addHistory(appendLoanText(player.name + " entered college", payment));
             }
             break;
@@ -2877,7 +3033,7 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
                 chooseCareer(player, true);
                 return;
             }
-            line = "GRADUATION STOP: career route keeps the current job.";
+            line = "Graduation day passes by. Career-route players keep building the job they already chose.";
             addHistory(player.name + " cleared Graduation");
             break;
         case TILE_MARRIAGE:
@@ -2928,13 +3084,13 @@ void Game::applyTileEffect(int playerIndex, const Tile& tile) {
             return;
         case TILE_CAREER_2:
             player.salary += tile.value;
-            line = "PROMOTION: salary increased to $" + std::to_string(player.salary) + ".";
+            line = "A promotion lands at the right time. Salary rises to $" + std::to_string(player.salary) + ".";
             addHistory(player.name + " got a promotion");
             break;
         case TILE_PAYDAY: {
             int payout = tile.value + effectiveSalary(player);
             bank.credit(player, payout);
-            line = "PAYDAY: collected $" + std::to_string(payout) + ".";
+            line = "Payday arrives. " + player.name + " collects $" + std::to_string(payout) + ".";
             if (player.salaryReductionTurns > 0) {
                 line += " Salary sabotage reduced this payday.";
             }
@@ -2967,7 +3123,9 @@ int Game::chooseNextTile(Player& player, const Tile& tile) {
         if (isCpuPlayer(playerIndex)) {
             c = cpu.chooseStartRoute(player, rules);
             showCpuThinking(playerIndex,
-                            c == 0 ? "CPU chose College route." : "CPU chose Career route.");
+                            c == 0
+                                ? "CPU weighs early debt against stronger future jobs, then chooses College."
+                                : "CPU chooses Career to start earning sooner.");
         } else {
             c = showBranchPopup(
                 "College or Career?",
@@ -2985,14 +3143,14 @@ int Game::chooseNextTile(Player& player, const Tile& tile) {
             addHistory(appendLoanText(player.name + " chose College and paid $100000", payment));
             showDecisionPopup(player.name,
                               "College Route",
-                              appendLoanText("This path may lead to stronger careers later. Tuition is paid before moving onto College Route (CO).", payment),
+                              appendLoanText("A bigger future starts with a bigger bill. Tuition is paid before moving onto College Route (CO).", payment),
                               hasColor,
                               autoAdvanceUi);
         } else {
             addHistory(player.name + " chose Career");
             showDecisionPopup(player.name,
                               "Career Path",
-                              "This path chooses a job immediately and starts earning salary sooner.",
+                              "The faster road begins now: choose a job immediately and start earning salary sooner.",
                               hasColor,
                               autoAdvanceUi);
         }
@@ -3206,7 +3364,7 @@ bool Game::run() {
                        turnPromptText());
             maybeCpuSabotage(currentPlayerIndex);
             int command = waitForTurnCommand(currentPlayerIndex);
-            if (command == 27 || command == 'q' || command == 'Q') {
+            if (command == 27) {
                 const int quitChoice = showBranchPopup(
                     "Leave the game from the ESC menu?",
                     std::vector<std::string>{
@@ -3260,28 +3418,46 @@ bool Game::run() {
             }
         }
 
-        std::ostringstream breakdown;
-        breakdown << "Cash $" << players[winner].cash
-                  << " + house $" << (players[winner].finalHouseSaleValue > 0
-                                          ? players[winner].finalHouseSaleValue
-                                          : players[winner].houseValue)
-                  << " + action cards $" << static_cast<int>(players[winner].actionCards.size()) * 100000
-                  << " + pet cards $" << static_cast<int>(players[winner].petCards.size()) * 100000
-                  << " + family $" << players[winner].kids * 50000
-                  << " + retirement $" << players[winner].retirementBonus
-                  << " - loans $" << bank.totalLoanDebt(players[winner]);
+        const int winnerHouse = players[winner].finalHouseSaleValue > 0
+            ? players[winner].finalHouseSaleValue
+            : players[winner].houseValue;
+        const int winnerActionScore = static_cast<int>(players[winner].actionCards.size()) * 100000;
+        const int winnerPetScore = static_cast<int>(players[winner].petCards.size()) * 100000;
+        const int winnerFamilyScore = players[winner].kids * 50000;
+        const int winnerLoanPenalty = bank.totalLoanDebt(players[winner]);
+
+        std::vector<std::string> endgameLines;
+        endgameLines.push_back(players[winner].name + " reaches the finish with the highest final score: $" +
+                               std::to_string(best) + ".");
+        endgameLines.push_back("");
+        endgameLines.push_back("FINAL SCORES");
+        for (std::size_t i = 0; i < players.size(); ++i) {
+            endgameLines.push_back(players[i].name + ": $" + std::to_string(calculateFinalWorth(players[i])));
+        }
+        endgameLines.push_back("");
+        endgameLines.push_back("WINNER BREAKDOWN");
+        endgameLines.push_back("Cash: $" + std::to_string(players[winner].cash));
+        endgameLines.push_back("House sale: $" + std::to_string(winnerHouse));
+        endgameLines.push_back("Action cards: $" + std::to_string(winnerActionScore));
+        endgameLines.push_back("Pet cards: $" + std::to_string(winnerPetScore));
+        endgameLines.push_back("Children/family bonus: $" + std::to_string(winnerFamilyScore));
+        endgameLines.push_back("Retirement bonus: $" + std::to_string(players[winner].retirementBonus));
+        endgameLines.push_back("Loan penalty: -$" + std::to_string(winnerLoanPenalty));
+        endgameLines.push_back("Press ENTER to return to the main menu.");
 
         addHistory("Completed game: " + players[winner].name + " won with $" + std::to_string(best));
         showPopupMessage("Player " + std::to_string(winner + 1) + " Wins!",
-                         std::vector<std::string>{
-                             players[winner].name + " wins the journey with $" + std::to_string(best) + ".",
-                             breakdown.str(),
-                             "Press ENTER to return to the main menu."
-                         },
+                         endgameLines,
                          hasColor,
                          false);
 
         destroyWindows();
+        players.clear();
+        currentPlayerIndex = 0;
+        retiredCount = 0;
+        turnCounter = 0;
+        activeTraps.clear();
+        history.clear();
         clear();
         refresh();
     }

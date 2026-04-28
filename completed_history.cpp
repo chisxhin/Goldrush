@@ -25,6 +25,19 @@ std::string valueAfter(const std::string& line, const std::string& prefix) {
     }
     return line.substr(prefix.size());
 }
+
+bool parseHistoryInt(const std::string& text, int& value) {
+    if (text.empty()) {
+        return false;
+    }
+    char* endPtr = nullptr;
+    const long parsed = std::strtol(text.c_str(), &endPtr, 10);
+    if (endPtr == nullptr || *endPtr != '\0') {
+        return false;
+    }
+    value = static_cast<int>(parsed);
+    return true;
+}
 }
 
 bool appendCompletedGameHistory(const CompletedGameEntry& entry, std::string& error) {
@@ -83,9 +96,18 @@ std::vector<CompletedGameEntry> loadCompletedGameHistory(std::string& error) {
         if (line.rfind("date=", 0) == 0) current.date = valueAfter(line, "date=");
         else if (line.rfind("gameId=", 0) == 0) current.gameId = valueAfter(line, "gameId=");
         else if (line.rfind("winner=", 0) == 0) current.winner = valueAfter(line, "winner=");
-        else if (line.rfind("winnerScore=", 0) == 0) current.winnerScore = std::atoi(valueAfter(line, "winnerScore=").c_str());
-        else if (line.rfind("winnerCash=", 0) == 0) current.winnerCash = std::atoi(valueAfter(line, "winnerCash=").c_str());
-        else if (line.rfind("rounds=", 0) == 0) current.rounds = std::atoi(valueAfter(line, "rounds=").c_str());
+        else if (line.rfind("winnerScore=", 0) == 0) {
+            int parsed = current.winnerScore;
+            if (parseHistoryInt(valueAfter(line, "winnerScore="), parsed)) current.winnerScore = parsed;
+        }
+        else if (line.rfind("winnerCash=", 0) == 0) {
+            int parsed = current.winnerCash;
+            if (parseHistoryInt(valueAfter(line, "winnerCash="), parsed)) current.winnerCash = parsed;
+        }
+        else if (line.rfind("rounds=", 0) == 0) {
+            int parsed = current.rounds;
+            if (parseHistoryInt(valueAfter(line, "rounds="), parsed)) current.rounds = parsed;
+        }
         else if (line.rfind("players=", 0) == 0) current.players = valueAfter(line, "players=");
         else if (line.rfind("mode=", 0) == 0) current.mode = valueAfter(line, "mode=");
     }

@@ -57,6 +57,10 @@ void drawPlayerPanel(WINDOW* sideWin, const Board& board, const std::vector<Play
 std::string formatHistoryEvent(const std::string& eventText);
 int getHistoryEventColor(const std::string& eventText);
 void drawEventMessage(WINDOW* messageWin, const std::string& title, const std::string& message);
+void drawMinimapPanel(WINDOW* panelWin,
+                      const Board& board,
+                      const std::vector<Player>& players,
+                      int currentPlayer);
 void draw_sidebar_ui(WINDOW* panelWin,
                      const Board& board,
                      const std::vector<Player>& players,

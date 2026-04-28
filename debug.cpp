@@ -1022,19 +1022,24 @@ void debugClassicFullBoardMode() {
 }
 
 void debugMinimapSupport() {
-    RuleSet rules = makeNormalRules();
+    initialize_game_ui();
+    Board board;
     std::vector<Player> players = makeBoardPreviewPlayers();
     players[0].tile = 64;
     players[1].tile = 80;
-    showBoardPreview("Minimap Support",
-                     "Check that the current main minimap still draws in the side panel with player markers and route landmarks.",
-                     players,
-                     0,
-                     std::vector<std::string>{
-                         "Minimap should remain active regardless of board view mode."
-                     },
-                     rules,
-                     BoardViewMode::FollowCamera);
+    int h = 0;
+    int w = 0;
+    getmaxyx(stdscr, h, w);
+    WINDOW* popup = newwin(std::min(28, h - 2),
+                           std::min(58, w - 2),
+                           1,
+                           std::max(0, (w - std::min(58, w - 2)) / 2));
+    apply_ui_background(popup);
+    keypad(popup, TRUE);
+    drawMinimapPanel(popup, board, players, 0);
+    waitForEnterPrompt(popup, getmaxy(popup) - 2, 2, "Press ENTER to continue...");
+    delwin(popup);
+    destroy_game_ui();
 }
 
 void debugPopupOverFollowCamera() {

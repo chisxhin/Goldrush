@@ -1,6 +1,7 @@
 #include "game_settings.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <sstream>
 #include <vector>
@@ -18,6 +19,40 @@ int clampInt(int value, int low, int high) {
 
 std::string onOff(bool value) {
     return value ? "ON" : "OFF";
+}
+
+bool parseStrictIntSetting(const std::string& text, int& value) {
+    std::size_t begin = 0;
+    while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin]))) {
+        ++begin;
+    }
+    std::size_t end = text.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1]))) {
+        --end;
+    }
+    if (begin >= end) {
+        return false;
+    }
+    std::string trimmed = text.substr(begin, end - begin);
+    std::size_t index = 0;
+    if (trimmed[index] == '+' || trimmed[index] == '-') {
+        ++index;
+    }
+    if (index >= trimmed.size()) {
+        return false;
+    }
+    for (; index < trimmed.size(); ++index) {
+        if (!std::isdigit(static_cast<unsigned char>(trimmed[index]))) {
+            return false;
+        }
+    }
+    char* endPtr = nullptr;
+    const long parsed = std::strtol(trimmed.c_str(), &endPtr, 10);
+    if (endPtr == nullptr || *endPtr != '\0') {
+        return false;
+    }
+    value = static_cast<int>(parsed);
+    return true;
 }
 
 bool editNumericSetting(const std::string& label, int& value, int minValue, int maxValue, bool hasColor) {
@@ -47,10 +82,18 @@ bool editNumericSetting(const std::string& label, int& value, int minValue, int 
     curs_set(0);
     delwin(popup);
 
-    if (buffer[0] == '\0') {
+    int parsed = value;
+    if (!parseStrictIntSetting(buffer, parsed)) {
+        showPopupMessage("Invalid Setting",
+                         std::vector<std::string>{
+                             "Enter digits only for " + label + ".",
+                             "The previous value was kept."
+                         },
+                         hasColor,
+                         false);
         return false;
     }
-    value = clampInt(std::atoi(buffer), minValue, maxValue);
+    value = clampInt(parsed, minValue, maxValue);
     return true;
 }
 

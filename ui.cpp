@@ -707,18 +707,15 @@ void drawEventMessage(WINDOW* messageWin, const std::string& title, const std::s
     wrefresh(messageWin);
 }
 
-void draw_sidebar_ui(WINDOW* panelWin,
-                     const Board& board,
-                     const std::vector<Player>& players,
-                     int currentPlayer,
-                     const std::vector<std::string>& historyLines,
-                     const RuleSet& rules) {
-    (void)historyLines;
+void drawMinimapPanel(WINDOW* panelWin,
+                      const Board& board,
+                      const std::vector<Player>& players,
+                      int currentPlayer) {
     werase(panelWin);
     box(panelWin, 0, 0);
 
     wattron(panelWin, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
-    mvwprintw(panelWin, 1, 2, "MINI MAP");
+    mvwprintw(panelWin, 1, 2, "MINIMAP");
     wattroff(panelWin, COLOR_PAIR(GOLDRUSH_GOLD_BLACK) | A_BOLD);
 
     const int panelHeight = getmaxy(panelWin);
@@ -740,10 +737,10 @@ void draw_sidebar_ui(WINDOW* panelWin,
         minTileY = std::min(minTileY, tile.y);
         maxTileY = std::max(maxTileY, tile.y);
     }
+
     const int logicalRows = std::max(1, maxTileY - minTileY);
     const int maxMapBottom = std::max(mapTop + logicalRows, panelHeight - 11);
-    const int mapCellHeight =
-        (mapTop + (logicalRows * 2) <= maxMapBottom) ? 2 : 1;
+    const int mapCellHeight = (mapTop + (logicalRows * 2) <= maxMapBottom) ? 2 : 1;
     const int mapHeight = ((maxTileY - minTileY) * mapCellHeight) + 1;
     const int separatorWidth = std::max(4, getmaxx(panelWin) - 2);
     const int mapBottom = mapTop + mapHeight;
@@ -775,21 +772,30 @@ void draw_sidebar_ui(WINDOW* panelWin,
         const int drawX = mapLeft + ((tile.x - minTileX) * mapCellWidth);
         const int drawY = mapTop + ((tile.y - minTileY) * mapCellHeight);
 
-        const bool playerOneHere = players.size() > 0 && players[0].tile == i;
-        const bool playerTwoHere = players.size() > 1 && players[1].tile == i;
+        int occupants = 0;
+        int firstPlayer = -1;
+        bool currentHere = false;
+        for (std::size_t p = 0; p < players.size(); ++p) {
+            if (players[p].tile != i) {
+                continue;
+            }
+            if (firstPlayer < 0) {
+                firstPlayer = static_cast<int>(p);
+            }
+            if (static_cast<int>(p) == currentPlayer) {
+                currentHere = true;
+            }
+            ++occupants;
+        }
 
         const std::string baseGlyph = minimapPathGlyph(i, tile);
-
-        if (playerOneHere && playerTwoHere) {
-            drawMinimapDot(panelWin, drawY, drawX, "◎", GOLDRUSH_GOLD_TERRA);
-        } else if (playerOneHere && !baseGlyph.empty() && baseGlyph != "c") {
-            drawMinimapDot(panelWin, drawY, drawX, baseGlyph.c_str(), GOLDRUSH_PLAYER_ONE);
-        } else if (playerTwoHere && !baseGlyph.empty() && baseGlyph != "c") {
-            drawMinimapDot(panelWin, drawY, drawX, baseGlyph.c_str(), GOLDRUSH_BLACK_FOREST);
-        } else if (playerOneHere) {
-            drawMinimapDot(panelWin, drawY, drawX, "a", GOLDRUSH_PLAYER_ONE);
-        } else if (playerTwoHere) {
-            drawMinimapDot(panelWin, drawY, drawX, "b", GOLDRUSH_BLACK_FOREST);
+        if (occupants > 1) {
+            drawMinimapDot(panelWin, drawY, drawX, currentHere ? "P+" : "2P", GOLDRUSH_GOLD_TERRA);
+        } else if (occupants == 1 && !baseGlyph.empty() && baseGlyph != "c") {
+            drawMinimapDot(panelWin, drawY, drawX, baseGlyph.c_str(), ui_player_color_pair(firstPlayer));
+        } else if (occupants == 1) {
+            const std::string marker = "P" + std::to_string(firstPlayer + 1);
+            drawMinimapDot(panelWin, drawY, drawX, marker.c_str(), ui_player_color_pair(firstPlayer));
         } else if (!baseGlyph.empty()) {
             drawMinimapDot(panelWin,
                            drawY,
@@ -797,18 +803,18 @@ void draw_sidebar_ui(WINDOW* panelWin,
                            baseGlyph.c_str(),
                            tile.kind == TILE_RETIREMENT ? GOLDRUSH_GOLD_TERRA : GOLDRUSH_BLACK_TERRA);
         } else if (isSpecialMinimapTile(tile)) {
-            drawMinimapDot(panelWin, drawY, drawX, "◆", GOLDRUSH_BLACK_TERRA);
+            drawMinimapDot(panelWin, drawY, drawX, "!", GOLDRUSH_BLACK_TERRA);
         } else if (minimapNeedsVertex(board, i)) {
             drawMinimapDot(panelWin, drawY, drawX, ".", GOLDRUSH_BROWN_CREAM);
         }
     }
 
-    mvwprintw(panelWin, mapBottom + 2, 2, "P1");
-    drawMinimapDot(panelWin, mapBottom + 2, 6, "●", GOLDRUSH_PLAYER_ONE);
-    mvwprintw(panelWin, mapBottom + 2, 9, "Gold");
-    mvwprintw(panelWin, mapBottom + 3, 2, "P2");
-    drawMinimapDot(panelWin, mapBottom + 3, 6, "●", GOLDRUSH_BLACK_FOREST);
-    mvwprintw(panelWin, mapBottom + 3, 9, "Green");
+    if (mapBottom + 2 < panelHeight - 1) {
+        mvwprintw(panelWin, mapBottom + 2, 2, "P1/P2 mark players. P+ means stacked.");
+    }
+    if (mapBottom + 3 < panelHeight - 1) {
+        mvwprintw(panelWin, mapBottom + 3, 2, "! special stop/event    . route bend");
+    }
 
     if (!players.empty() && currentPlayer >= 0 && currentPlayer < static_cast<int>(players.size())) {
         const Player& player = players[currentPlayer];
@@ -816,22 +822,79 @@ void draw_sidebar_ui(WINDOW* panelWin,
         const std::string invest = player.investedNumber > 0 ? std::to_string(player.investedNumber) : "-";
         const int statsY = mapBottom + 5;
 
-        wattron(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
-        mvwprintw(panelWin, statsY, 2, "%-.24s's trail", player.name.c_str());
-        wattroff(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
+        if (statsY < panelHeight - 1) {
+            wattron(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
+            mvwprintw(panelWin, statsY, 2, "%-.24s's trail", player.name.c_str());
+            wattroff(panelWin, COLOR_PAIR(ui_player_color_pair(currentPlayer)) | A_BOLD);
+        }
 
         wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
-        mvwprintw(panelWin, statsY + 1, 2, "Cash:%d  Loans:%d", player.cash, player.loans);
-        mvwprintw(panelWin, statsY + 2, 2, "Job:%-.15s  Inv:%s", player.job.c_str(), invest.c_str());
-        mvwprintw(panelWin, statsY + 3, 2, "Married:%s Kids:%d Pets:%d",
-                  player.married ? "Y" : "N",
-                  player.kids,
-                  static_cast<int>(player.petCards.size()));
-        mvwprintw(panelWin, statsY + 4, 2, "Home:%-.24s", home.c_str());
-        mvwprintw(panelWin, statsY + 5, 2, "%-.34s", rules.editionName.c_str());
+        if (statsY + 1 < panelHeight - 1) {
+            mvwprintw(panelWin, statsY + 1, 2, "Cash:%d  Loans:%d", player.cash, player.loans);
+        }
+        if (statsY + 2 < panelHeight - 1) {
+            mvwprintw(panelWin, statsY + 2, 2, "Job:%-.15s  Inv:%s", player.job.c_str(), invest.c_str());
+        }
+        if (statsY + 3 < panelHeight - 1) {
+            mvwprintw(panelWin, statsY + 3, 2, "Married:%s Kids:%d Pets:%d",
+                      player.married ? "Y" : "N",
+                      player.kids,
+                      static_cast<int>(player.petCards.size()));
+        }
+        if (statsY + 4 < panelHeight - 1) {
+            mvwprintw(panelWin, statsY + 4, 2, "Home:%-.24s", home.c_str());
+        }
+        if (statsY + 5 < panelHeight - 1) {
+            mvwprintw(panelWin, statsY + 5, 2, "Tab/Enter/Esc closes this popup.");
+        }
         wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_CREAM));
     }
+
     wrefresh(panelWin);
+}
+
+void draw_sidebar_ui(WINDOW* panelWin,
+                     const Board& board,
+                     const std::vector<Player>& players,
+                     int currentPlayer,
+                     const std::vector<std::string>& historyLines,
+                     const RuleSet& rules) {
+    int panelHeight = 0;
+    int panelWidth = 0;
+    getmaxyx(panelWin, panelHeight, panelWidth);
+    const bool compact = panelHeight < 31 || panelWidth < 42;
+    const int historyHeaderY = compact ? 21 : 23;
+    const int historyStartY = compact ? 22 : 24;
+    const int historyMaxLines = 5;
+    const int historyWidth = std::max(12, panelWidth - 5);
+
+    werase(panelWin);
+    box(panelWin, 0, 0);
+
+    if (!players.empty() && currentPlayer >= 0 && currentPlayer < static_cast<int>(players.size())) {
+        drawPlayerPanel(panelWin, board, players, currentPlayer);
+    }
+
+    drawPanelHeader(panelWin, historyHeaderY, "HISTORY");
+    for (std::size_t i = 0; i < historyLines.size() && i < static_cast<std::size_t>(historyMaxLines); ++i) {
+        const int colorPair = getHistoryEventColor(historyLines[i]);
+        const std::string formatted = clipPanelText(formatHistoryEvent(historyLines[i]), static_cast<std::size_t>(historyWidth));
+        wattron(panelWin, COLOR_PAIR(colorPair));
+        mvwprintw(panelWin, historyStartY + static_cast<int>(i), 2, "%-*s", historyWidth, formatted.c_str());
+        wattroff(panelWin, COLOR_PAIR(colorPair));
+    }
+
+    const int hintY = panelHeight - 3;
+    if (hintY > historyStartY + historyMaxLines) {
+        wattron(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
+        mvwhline(panelWin, hintY - 1, 1, ACS_HLINE, std::max(4, panelWidth - 2));
+        wattroff(panelWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND));
+        mvwprintw(panelWin, hintY, 2, "TAB: scores + minimap");
+        mvwprintw(panelWin, hintY + 1, 2, "%-.34s", rules.editionName.c_str());
+    }
+
+    wrefresh(panelWin);
+    return;
 }
 
 void draw_message_ui(WINDOW* msgWin, const std::string& line1, const std::string& line2) {
