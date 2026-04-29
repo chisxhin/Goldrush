@@ -12,6 +12,10 @@
 #include <ctime>
 #include <vector>
 
+//Input: unicodeSupported (bool, unused here)
+//Output: vector of symbols (A–H)
+//Purpose: provides the set of symbols used for matching pairs
+//Relation: used in shuffleGrid to populate the grid
 std::vector<std::string> getMemoryMatchSymbols(bool unicodeSupported) {
     (void)unicodeSupported;
     return {"A", "B", "C", "D", "E", "F", "G", "H"};
@@ -43,12 +47,20 @@ const std::vector<std::string> MEMORY_TITLE = {
     "                                                               "
 };
 
+//Input: none (data container)
+//Output: holds cell attributes (symbol, revealed state, matched state)
+//Purpose: represents a single card in the memory grid
+//Relation: used throughout grid setup, drawing, and matching logic
 struct Cell {
     std::string symbol;
     bool revealed;
     bool matched;
 };
 
+//Input: grid reference (vector<Cell>&)
+//Output: none
+//Purpose: fills the grid with pairs of symbols, shuffles them randomly
+//Relation: called at the start of playMemoryMatchMinigame
 void shuffleGrid(std::vector<Cell>& grid) {
     const std::vector<std::string> symbolPool = getMemoryMatchSymbols(false);
     std::vector<std::string> symbols;
@@ -66,6 +78,10 @@ void shuffleGrid(std::vector<Cell>& grid) {
     }
 }
 
+//Input: WINDOW pointer, coordinates, symbol string, flags (revealed, matched, selected, revealAll)
+//Output: none
+//Purpose: draws a single cell with its symbol, hidden state, or match indicator
+//Relation: used in rendering loop of playMemoryMatchMinigame
 void drawCell(WINDOW* win, int y, int x, const std::string& symbol, bool isRevealed, bool isMatched,
               bool isSelected, bool revealAll) {
     if (isSelected) {
@@ -93,6 +109,10 @@ void drawCell(WINDOW* win, int y, int x, const std::string& symbol, bool isRevea
     }
 }
 
+//Input: WINDOW pointer, screen width, hasColor flag
+//Output: none
+//Purpose: draws ASCII art title for Memory Match
+//Relation: called at the start of playMemoryMatchMinigame for UI
 void drawAsciiTitle(WINDOW* win, int screenW, bool hasColor) {
     if (hasColor) {
         wattron(win, COLOR_PAIR(GOLDRUSH_GOLD_SAND) | A_BOLD);
@@ -106,6 +126,10 @@ void drawAsciiTitle(WINDOW* win, int screenW, bool hasColor) {
     }
 }
 
+//Input: WINDOW pointer, coordinates, text string, positive flag, hasColor flag
+//Output: none
+//Purpose: displays feedback messages (MATCH! or NO MATCH!) with blinking effect
+//Relation: used in playMemoryMatchMinigame after each pair attempt
 void flashFeedback(WINDOW* win,
                    int y,
                    int screenW,
@@ -120,6 +144,10 @@ void flashFeedback(WINDOW* win,
 
 } // anonymous namespace
 
+//Input: playerName(string), hasColor(bool)
+//Output: MemoryMatchResult struct (pairsMatched, livesRemaining, abandoned, won)
+//Purpose: runs the full Memory Match minigame loop, shows tutorial, initializes grid and shuffles symbols, handles input (movement, selection, help, quit), updates game state (pairs matched, lives remaining), renders UI (grid, feedback, status, instructions), ends with victory, game over, or abandonment
+//Relation: main entry point for the minigame, integrates all helper functions
 MemoryMatchResult playMemoryMatchMinigame(const std::string& playerName, bool hasColor) {
     MemoryMatchResult result;
     result.pairsMatched = 0;
