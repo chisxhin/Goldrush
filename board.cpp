@@ -68,10 +68,18 @@ const int TILE_H = 5;
 const int TILE_GAP_X = 1;
 const int TILE_GAP_Y = 1;
 
+//Input: areaLeft (left boundary), areaWidth (width of area), textWidth (width of text)->(all integer)
+//Output: integer x-coordinate
+//Purpose: calculates the centered x-position for text inside a given area
+//Relation: used by drawTileBox and other rendering functions to align text properly
 int centeredX(int areaLeft, int areaWidth, int textWidth) {
     return areaLeft + std::max(0, (areaWidth - textWidth) / 2);
 }
 
+//Input: text (string), maxWidth (integer maximum allowed width)
+//Output: truncated or original string
+//Purpose: ensures text fits within a given width
+//Relation: used by tileCaption and drawClassicTile to prevent overflow
 std::string clipText(const std::string& text, int maxWidth) {
     if (maxWidth <= 0) {
         return "";
@@ -82,6 +90,10 @@ std::string clipText(const std::string& text, int maxWidth) {
     return text.substr(0, static_cast<std::size_t>(maxWidth));
 }
 
+//Input: Tile reference
+//Output: string title for the tile
+//Purpose: maps tile kind and id ranges to human-readable names
+//Relation: used in drawTileBox to display tile titles
 std::string tileTitle(const Tile& tile) {
     switch (tile.kind) {
         case TILE_BLACK:
@@ -116,10 +128,18 @@ std::string tileTitle(const Tile& tile) {
     }
 }
 
+//Input: Tile reference
+//Output: string caption (short abbreviation)
+//Purpose: generates a clipped caption for the tile
+//Relation: complements tileTitle in drawTileBox
 std::string tileCaption(const Tile& tile) {
     return clipText(getTileAbbreviation(tile), TILE_W - 2);
 }
 
+//Input: Tile reference
+//Output: integer color pair index
+//Purpose: determines which color scheme to use for rendering a tile
+//Relation: used in drawTileBox and drawClassicTile for ncurses color attributes
 int tileColorPair(const Tile& tile) {
     switch (tile.kind) {
         case TILE_BLACK:
@@ -143,6 +163,10 @@ int tileColorPair(const Tile& tile) {
     }
 }
 
+//Input: vector of Player objects, integer tileIndex
+//Output: vector of player indices at that tile
+//Purpose: finds which players occupy a given tile
+//Relation: used in drawTileBox and drawClassicTokens to render player tokens
 std::vector<int> playersAtTile(const std::vector<Player>& players, int tileIndex) {
     std::vector<int> indices;
     for (std::size_t i = 0; i < players.size(); ++i) {
@@ -153,6 +177,10 @@ std::vector<int> playersAtTile(const std::vector<Player>& players, int tileIndex
     return indices;
 }
 
+//Input: vector of Tile objects
+//Output: vector of pairs (tile index, next tile index)
+//Purpose: builds connections between tiles based on next and altNext
+//Relation: used for pathfinding and board visualization
 std::vector<std::pair<int, int> > boardConnections(const std::vector<Tile>& tiles) {
     std::vector<std::pair<int, int> > connections;
     for (std::size_t i = 0; i < tiles.size(); ++i) {
@@ -166,6 +194,10 @@ std::vector<std::pair<int, int> > boardConnections(const std::vector<Tile>& tile
     return connections;
 }
 
+//Input: vector of Tile objects
+//Output: set of reachable tile indices
+//Purpose: computes all tiles reachable from start using BFS-like traversal
+//Relation: ensures board connectivity and validates tile graph
 std::set<int> reachableTiles(const std::vector<Tile>& tiles) {
     std::set<int> reachable;
     std::vector<int> pending;
@@ -190,6 +222,10 @@ std::set<int> reachableTiles(const std::vector<Tile>& tiles) {
     return reachable;
 }
 
+//Input: vector of Tile objects, Player reference, tileId
+//Output: integer next tile index
+//Purpose: determines next tile based on player’s choices (start, family, risk)
+//Relation: used in buildVisibleTrail to navigate forward
 int nextTileForView(const std::vector<Tile>& tiles, const Player& player, int tileId) {
     const Tile& tile = tiles[static_cast<std::size_t>(tileId)];
     if (tile.kind == TILE_SPLIT_START || tile.kind == TILE_START) {
@@ -222,6 +258,10 @@ int nextTileForView(const std::vector<Tile>& tiles, const Player& player, int ti
     return tile.next;
 }
 
+//Input: vector of Tile objects, Player reference, tileId
+//Output: integer previous tile index
+//Purpose: finds previous tile(s) leading to given tile, considering splits
+//Relation: used in buildVisibleTrail to navigate backward
 int previousTileForView(const std::vector<Tile>& tiles, const Player& player, int tileId) {
     std::vector<int> candidates;
     for (std::size_t i = 0; i < tiles.size(); ++i) {
@@ -253,6 +293,10 @@ int previousTileForView(const std::vector<Tile>& tiles, const Player& player, in
     return candidates[0];
 }
 
+//Input: vector of Tile objects, Player reference, focusTile
+//Output: set of visible tile indices
+//Purpose: builds a trail of tiles around focusTile for rendering camera view
+//Relation: combines nextTileForView and previousTileForView to show context
 std::set<int> buildVisibleTrail(const std::vector<Tile>& tiles, const Player& player, int focusTile) {
     std::set<int> visible;
     visible.insert(focusTile);
@@ -302,6 +346,10 @@ std::set<int> buildVisibleTrail(const std::vector<Tile>& tiles, const Player& pl
     return visible;
 }
 
+//Input: WINDOW pointer, coordinates (y1,x1,y2,x2), hasColor, colorPair, maxY, maxX
+//Output: none
+//Purpose: draws a line segment on the board window
+//Relation: used in drawClassicBoardGrid and tree guides
 void drawLineSegment(WINDOW* win, int y1, int x1, int y2, int x2, bool hasColor, int colorPair, int maxY, int maxX) {
     if (hasColor) {
         wattron(win, COLOR_PAIR(colorPair) | A_DIM);
@@ -331,6 +379,10 @@ void drawLineSegment(WINDOW* win, int y1, int x1, int y2, int x2, bool hasColor,
     }
 }
 
+//Input: WINDOW pointer, coordinates (y,x), players vector, tokenIndices vector, hasColor
+//Output: none
+//Purpose: draws player tokens inside a tile box
+//Relation: used in drawTileBox to show which players occupy a tile
 void drawTokenString(WINDOW* boardWin,
                      int y,
                      int x,
@@ -373,6 +425,10 @@ void drawTokenString(WINDOW* boardWin,
     }
 }
 
+//Input: WINDOW pointer, Tile reference, players vector, tileLeft, tileTop, isFocusTile, hasColor
+//Output: none
+//Purpose: draws a full tile box with title, caption, and tokens
+//Relation: central rendering function for board tiles
 void drawTileBox(WINDOW* boardWin,
                  const Tile& tile,
                  const std::vector<Player>& players,
@@ -432,6 +488,10 @@ void drawTileBox(WINDOW* boardWin,
     }
 }
 
+//Input: WINDOW pointer, hasColor flag
+//Output: none
+//Purpose: draw static board decorations (grid, trees, region labels, landmarks)
+//Relation: used in Board::render to build the full board background
 void drawClassicBoardGrid(WINDOW* boardWin, bool hasColor) {
     if (hasColor) {
         wattron(boardWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND) | A_DIM);
@@ -463,6 +523,10 @@ void drawClassicBoardGrid(WINDOW* boardWin, bool hasColor) {
     }
 }
 
+//Input: WINDOW pointer, hasColor flag
+//Output: none
+//Purpose: draw static board decorations (grid, trees, region labels, landmarks)
+//Relation: used in Board::render to build the full board background
 void drawClassicTreeGuides(WINDOW* boardWin, bool hasColor) {
     if (hasColor) {
         wattron(boardWin, COLOR_PAIR(GOLDRUSH_BROWN_SAND) | A_BOLD);
@@ -488,6 +552,10 @@ void drawClassicTreeGuides(WINDOW* boardWin, bool hasColor) {
     }
 }
 
+//Input: WINDOW pointer, hasColor flag
+//Output: none
+//Purpose: draw static board decorations (grid, trees, region labels, landmarks)
+//Relation: used in Board::render to build the full board background
 void drawClassicRegions(WINDOW* boardWin, bool hasColor) {
     for (std::size_t i = 0; i < sizeof(CLASSIC_REGION_LABELS) / sizeof(CLASSIC_REGION_LABELS[0]); ++i) {
         if (hasColor) {
@@ -505,6 +573,10 @@ void drawClassicRegions(WINDOW* boardWin, bool hasColor) {
     }
 }
 
+//Input: WINDOW pointer, hasColor flag
+//Output: none
+//Purpose: draw static board decorations (grid, trees, region labels, landmarks)
+//Relation: used in Board::render to build the full board background
 void drawClassicLandmarks(WINDOW* boardWin, bool hasColor) {
     if (hasColor) {
         wattron(boardWin, COLOR_PAIR(GOLDRUSH_BLACK_CREAM) | A_BOLD);
@@ -531,6 +603,10 @@ void drawClassicLandmarks(WINDOW* boardWin, bool hasColor) {
     }
 }
 
+//Input: WINDOW pointer, Tile reference, hasColor flag
+//Output: none
+//Purpose: draws a tile symbol at its board position
+//Relation: used in Board::render to show each tile
 void drawClassicTile(WINDOW* boardWin, const Tile& tile, bool hasColor) {
     const UiPos pos = CLASSIC_BOARD_POSITIONS[tile.id];
     const int y = pos.y;
@@ -568,6 +644,10 @@ void drawClassicTile(WINDOW* boardWin, const Tile& tile, bool hasColor) {
     }
 }
 
+//Input: WINDOW pointer, players vector, tileIndex, currentPlayerIndex, highlightedTile, hasColor
+//Output: none
+//Purpose: draws player tokens on the classic board view
+//Relation: complements drawClassicTile by overlaying player positions
 void drawClassicTokens(WINDOW* boardWin,
                        const std::vector<Player>& players,
                        int tileIndex,
@@ -624,6 +704,10 @@ void drawClassicTokens(WINDOW* boardWin,
 
 }  // namespace
 
+//Input: BoardViewMode enum or string name
+//Output: string name or BoardViewMode enum
+//Purpose: convert between enum and string representations
+//Relation: used in UI to switch board view modes
 std::string boardViewModeName(BoardViewMode mode) {
     switch (mode) {
         case BoardViewMode::ClassicFull:
@@ -634,6 +718,10 @@ std::string boardViewModeName(BoardViewMode mode) {
     }
 }
 
+//Input: BoardViewMode enum or string name
+//Output: string name or BoardViewMode enum
+//Purpose: convert between enum and string representations
+//Relation: used in UI to switch board view modes
 BoardViewMode boardViewModeFromName(const std::string& name) {
     std::string normalized;
     normalized.reserve(name.size());
@@ -653,15 +741,27 @@ BoardViewMode boardViewModeFromName(const std::string& name) {
     return BoardViewMode::FollowCamera;
 }
 
+//Input: none
+//Output: none
+//Purpose: initializes tiles and regions
+//Relation: sets up the board state for gameplay
 Board::Board() {
     initTiles();
     initRegions();
 }
 
+//Input: integer id
+//Output: const Tile reference
+//Purpose: retrieves tile by id
+//Relation: used throughout rendering and logic functions
 const Tile& Board::tileAt(int id) const {
     return tiles[id];
 }
 
+//Input: none
+//Output: none
+//Purpose: initializes all tiles with positions, labels, kinds, connections
+//Relation: core setup for board structure
 void Board::initTiles() {
     tiles.resize(TILE_COUNT);
     for (int i = 0; i < TILE_COUNT; ++i) {
@@ -919,10 +1019,18 @@ void Board::initTiles() {
     tiles[88].next = -1;
 }
 
+//Input: Tile reference
+//Output: bool
+//Purpose: checks if tile is a stop space
+//Relation: used in movement and rendering logic
 bool Board::isStopSpace(const Tile& tile) const {
     return tile.stop;
 }
 
+//Input: tileIndex
+//Output: string region name
+//Purpose: finds which region a tile belongs to
+//Relation: used in UI and tutorial legend
 std::string Board::regionNameForTile(int tileIndex) const {
     for (std::size_t i = 0; i < regions.size(); ++i) {
         if (tileIndex >= regions[i].startTileIndex && tileIndex <= regions[i].endTileIndex) {
@@ -932,6 +1040,10 @@ std::string Board::regionNameForTile(int tileIndex) const {
     return "Open Road";
 }
 
+//Input: none
+//Output: vector of strings
+//Purpose: builds tutorial legend with symbols and names
+//Relation: used in help/tutorial UI
 std::vector<std::string> Board::tutorialLegend() const {
     std::vector<std::string> lines;
     lines.push_back("[" + getTileBoardSymbol(tileAt(10)) + "] " + getTileDisplayName(tileAt(10)));
@@ -948,6 +1060,10 @@ std::vector<std::string> Board::tutorialLegend() const {
     return lines;
 }
 
+//Input: none
+//Output: none
+//Purpose: initializes board regions with names and tile ranges
+//Relation: complements initTiles, used in regionNameForTile
 void Board::initRegions() {
     regions.clear();
     regions.push_back({"Startup Street", 0, 12});
@@ -957,6 +1073,21 @@ void Board::initRegions() {
     regions.push_back({"Risky Road", 73, 86});
     regions.push_back({"Retirement Ridge", 87, 88});
 }
+
+//Input: boardWin (WINDOW* untuk ncurses output), players (vector berisi semua pemain),
+//       focusPlayerIndex (index pemain yang jadi fokus kamera),
+//       highlightedTile (tile yang sedang disorot),
+//       hasColor (flag apakah warna diaktifkan),
+//       viewMode (mode tampilan board: ClassicFull atau FollowCamera)
+//Output: none
+//Purpose: menggambar keseluruhan papan permainan ke window,
+//         termasuk grid, region, landmark, tile, dan token pemain.
+//Relation: ini adalah fungsi utama untuk visualisasi board.
+//          Memanggil drawClassicBoardGrid, drawClassicTreeGuides,
+//          drawClassicRegions, drawClassicLandmarks, drawClassicTile,
+//          drawClassicTokens, serta drawTileBox untuk menampilkan detail.
+//          Bergantung pada hasil dari buildVisibleTrail untuk menentukan
+//          tile mana yang terlihat sesuai mode kamera.
 void Board::render(WINDOW* boardWin,
                    const std::vector<Player>& players,
                    int focusPlayerIndex,
